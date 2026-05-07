@@ -249,7 +249,8 @@
     .btn-small.danger:hover { border-color: var(--neg); color: var(--neg); }
 
     /* Table */
-    .holdings-table { width: 100%; border-collapse: collapse; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .holdings-table { width: 100%; border-collapse: collapse; min-width: 420px; }
     .holdings-table th {
       font-size: 10px;
       letter-spacing: 0.15em;
@@ -259,6 +260,7 @@
       text-align: left;
       border-bottom: 0.5px solid var(--border);
       font-weight: 400;
+      white-space: nowrap;
     }
     .holdings-table th.r, .holdings-table td.r { text-align: right; }
     .holdings-table td {
@@ -266,9 +268,17 @@
       color: var(--text);
       padding: 10px 18px;
       border-bottom: 0.5px solid var(--border);
+      white-space: nowrap;
     }
     .holdings-table tr:last-child td { border-bottom: none; }
     .holdings-table tbody tr:hover td { background: var(--surface2); }
+    @media (max-width: 600px) {
+      .main { padding: 16px; }
+      .holdings-table { min-width: 340px; }
+      .col-cost { display: none; }
+      .holdings-table th, .holdings-table td { padding: 8px 12px; }
+      .account-header { flex-wrap: wrap; gap: 8px; }
+    }
     .ticker {
       font-family: var(--mono);
       font-size: 13px;
@@ -413,7 +423,7 @@
 <body>
 
   <header class="site-header">
-    <a href="https://brandon-knight.com">← Back</a>
+    <a href="index.html">← Back</a>
     <div class="header-title">
       <h1>Brandon Knight</h1>
       <p>Portfolio Tracker</p>
@@ -437,6 +447,15 @@
           <div class="toggle-track"></div>
           <div class="toggle-thumb"></div>
         </label>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Export data</span>
+        <button class="btn-small" onclick="exportData()">Download</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Import data</span>
+        <button class="btn-small" onclick="document.getElementById('importFile').click()">Upload</button>
+        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)" />
       </div>
     </div>
   </div>
@@ -578,12 +597,12 @@
               </div>
             </div>
           </div>
-          ${acct.holdings.length ? `<table class="holdings-table">
+          ${acct.holdings.length ? `<div class="table-wrap"><table class="holdings-table">
             <thead><tr>
-              <th>Ticker</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Market value</th><th class="r">Cost basis</th><th class="r"></th>
+              <th>Ticker</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Value</th><th class="r col-cost">Cost basis</th><th class="r"></th>
             </tr></thead>
             <tbody>${rows}</tbody>
-          </table>` : `<div class="empty">No holdings — click + Add to get started.</div>`}
+          </table></div>` : `<div class="empty">No holdings — click + Add to get started.</div>`}
         </div>`;
       });
 
@@ -677,6 +696,32 @@
     const savedTheme = localStorage.getItem('bk_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
     if (savedTheme === 'light') themeToggle.checked = true;
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'futures-portfolio.json';
+      a.click();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          const imported = JSON.parse(ev.target.result);
+          if (!imported.accounts) { alert('Invalid file.'); return; }
+          if (!confirm('This will replace all your current data. Continue?')) return;
+          state = imported;
+          saveState(); render(); refreshAll();
+          alert('Import successful!');
+        } catch(e) { alert('Could not read file. Make sure it is a valid Futures export.'); }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
 
     loadState();
     render();
