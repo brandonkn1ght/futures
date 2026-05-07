@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio Tracker — Brandon Knight</title>
+  <style>
+    :root {
+      --gold: #FDD023;
+      --purple: #461D7C;
+      --purple-light: #6a3dab;
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --surface2: #1a1a1a;
+      --border: rgba(70,29,124,0.35);
+      --border-gold: rgba(253,208,35,0.15);
+      --text: #f0f0f0;
+      --text-muted: #888;
+      --text-dim: #555;
+      --pos: #4ade80;
+      --neg: #f87171;
+      --mono: 'Courier New', monospace;
+    }
+    [data-theme="light"] {
+      --bg: #f5f3ee;
+      --surface: #ffffff;
+      --surface2: #ede9e0;
+      --border: rgba(70,29,124,0.2);
+      --border-gold: rgba(180,140,0,0.2);
+      --text: #1a1a1a;
+      --text-muted: #666;
+      --text-dim: #aaa;
+      --pos: #16a34a;
+      --neg: #dc2626;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Georgia', serif;
+      min-height: 100vh;
+      padding: 0;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* ── Header ── */
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 28px;
+      border-bottom: 0.5px solid var(--border-gold);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 50;
+    }
+    .site-header a {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .site-header a:hover { color: var(--gold); }
+    .header-title {
+      text-align: center;
+    }
+    .header-title h1 {
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--gold);
+      opacity: 0.85;
+    }
+    .header-title p {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--purple-light);
+      margin-top: 2px;
+    }
+    .cog-btn {
+      background: none;
+      border: 0.5px solid var(--border);
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: border-color 0.2s, color 0.2s, transform 0.4s;
+    }
+    .cog-btn:hover { border-color: var(--gold); color: var(--gold); transform: rotate(45deg); }
+    .cog-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+    /* ── Settings panel ── */
+    .settings-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+    }
+    .settings-overlay.open { display: block; }
+    .settings-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+    }
+    .settings-panel {
+      position: absolute;
+      top: 64px;
+      right: 24px;
+      width: 260px;
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-top: 2px solid var(--purple);
+      padding: 0;
+      font-family: 'Georgia', serif;
+    }
+    .settings-panel-header {
+      padding: 14px 18px 10px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .settings-panel-header span {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-label {
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    /* Toggle switch */
+    .toggle { position: relative; width: 38px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--surface2);
+      border: 0.5px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--purple); border-color: var(--purple); }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: transform 0.2s, background 0.2s;
+      pointer-events: none;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(18px); background: var(--gold); }
+
+    /* ── Main content ── */
+    .main { padding: 28px; max-width: 900px; margin: 0 auto; }
+
+    /* Summary cards */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1px;
+      border: 0.5px solid var(--border);
+      margin-bottom: 28px;
+      background: var(--border);
+    }
+    .metric {
+      background: var(--surface);
+      padding: 16px 18px;
+    }
+    .metric-label {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .metric-value {
+      font-size: 22px;
+      font-weight: 400;
+      color: var(--text);
+      font-family: var(--mono);
+      letter-spacing: -0.02em;
+    }
+    .metric-value.pos { color: var(--pos); }
+    .metric-value.neg { color: var(--neg); }
+
+    /* Accounts */
+    .accounts { display: flex; flex-direction: column; gap: 20px; }
+    .account-card {
+      border: 0.5px solid var(--border);
+      border-top: 2px solid var(--purple);
+      background: var(--surface);
+    }
+    .account-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .account-name-wrap { display: flex; align-items: center; gap: 10px; }
+    .account-dot { width: 6px; height: 6px; background: var(--gold); }
+    .account-name {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .account-total {
+      font-size: 14px;
+      font-family: var(--mono);
+      color: var(--gold);
+    }
+    .account-actions { display: flex; gap: 6px; }
+    .btn-small {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      cursor: pointer;
+      border: 0.5px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-family: 'Georgia', serif;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-small:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-small.danger:hover { border-color: var(--neg); color: var(--neg); }
+
+    /* Table */
+    .holdings-table { width: 100%; border-collapse: collapse; }
+    .holdings-table th {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 8px 18px;
+      text-align: left;
+      border-bottom: 0.5px solid var(--border);
+      font-weight: 400;
+    }
+    .holdings-table th.r, .holdings-table td.r { text-align: right; }
+    .holdings-table td {
+      font-size: 13px;
+      color: var(--text);
+      padding: 10px 18px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .holdings-table tr:last-child td { border-bottom: none; }
+    .holdings-table tbody tr:hover td { background: var(--surface2); }
+    .ticker {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--gold);
+      letter-spacing: 0.05em;
+    }
+    .price-mono { font-family: var(--mono); font-size: 13px; }
+    .chg { font-size: 11px; font-family: var(--mono); }
+    .chg.pos { color: var(--pos); }
+    .chg.neg { color: var(--neg); }
+    .del-row {
+      font-size: 11px;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 6px;
+      border: none;
+      background: transparent;
+      font-family: var(--mono);
+      transition: color 0.2s;
+    }
+    .del-row:hover { color: var(--neg); }
+    .empty {
+      padding: 20px 18px;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+    }
+
+    /* Add account button */
+    .add-account-btn {
+      width: 100%;
+      margin-top: 12px;
+      padding: 12px;
+      background: transparent;
+      border: 0.5px dashed var(--border);
+      color: var(--text-dim);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: 'Georgia', serif;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .add-account-btn:hover { border-color: var(--purple-light); color: var(--gold); }
+
+    /* Refresh row */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .refresh-btn {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 7px 16px;
+      cursor: pointer;
+      border: 0.5px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-family: 'Georgia', serif;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .refresh-btn:hover { border-color: var(--gold); color: var(--gold); }
+    .refresh-btn.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .last-updated {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+    }
+
+    /* Modal */
+    .modal-bg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-top: 2px solid var(--purple);
+      padding: 24px;
+      width: 300px;
+      max-width: 95vw;
+      font-family: 'Georgia', serif;
+    }
+    .modal h3 {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 18px;
+      font-weight: 400;
+    }
+    .modal label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 5px;
+      margin-top: 12px;
+    }
+    .modal input {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      background: var(--surface2);
+      border: 0.5px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      outline: none;
+    }
+    .modal input:focus { border-color: var(--purple-light); }
+    .error-msg { font-size: 11px; color: var(--neg); margin-top: 8px; min-height: 15px; }
+    .modal-btns { display: flex; gap: 8px; margin-top: 18px; }
+    .modal-btns button {
+      flex: 1;
+      padding: 9px;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: 'Georgia', serif;
+      border: 0.5px solid var(--border);
+    }
+    .modal-btns .save { background: var(--purple); color: var(--gold); border-color: var(--purple); }
+    .modal-btns .save:hover { background: var(--purple-light); }
+    .modal-btns .cancel { background: transparent; color: var(--text-muted); }
+    .modal-btns .cancel:hover { border-color: var(--text-muted); color: var(--text); }
+
+    .loading-price { color: var(--text-dim); font-size: 11px; font-family: var(--mono); }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <a href="index.html">← Back</a>
+    <div class="header-title">
+      <h1>Brandon Knight</h1>
+      <p>Portfolio Tracker</p>
+    </div>
+    <button class="cog-btn" id="cogBtn" aria-label="Settings">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a6.97 6.97 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.47.47 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Settings panel -->
+  <div class="settings-overlay" id="settingsOverlay">
+    <div class="settings-backdrop" id="settingsBackdrop"></div>
+    <div class="settings-panel">
+      <div class="settings-panel-header"><span>Settings</span></div>
+      <div class="settings-row">
+        <span class="settings-label">Light Mode</span>
+        <label class="toggle">
+          <input type="checkbox" id="themeToggle" />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="toolbar">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">↻ Refresh prices</button>
+      <span class="last-updated" id="lastUpdated"></span>
+    </div>
+
+    <div class="summary-grid">
+      <div class="metric"><div class="metric-label">Total value</div><div class="metric-value" id="totalVal">—</div></div>
+      <div class="metric"><div class="metric-label">Day gain/loss</div><div class="metric-value" id="dayGain">—</div></div>
+      <div class="metric"><div class="metric-label">Accounts</div><div class="metric-value" id="acctCount">0</div></div>
+      <div class="metric"><div class="metric-label">Positions</div><div class="metric-value" id="posCount">0</div></div>
+    </div>
+
+    <div class="accounts" id="accountsList"></div>
+    <button class="add-account-btn" onclick="openAddAccount()">+ Add Account</button>
+  </main>
+
+  <!-- Stock modal -->
+  <div class="modal-bg" id="stockModal">
+    <div class="modal">
+      <h3>Add Holding</h3>
+      <label>Ticker symbol</label>
+      <input id="mTicker" placeholder="AAPL" style="text-transform:uppercase" />
+      <label>Shares</label>
+      <input id="mShares" type="number" placeholder="10" min="0.0001" step="any" />
+      <label>Cost basis per share (optional)</label>
+      <input id="mCost" type="number" placeholder="150.00" min="0" step="any" />
+      <div class="error-msg" id="modalError"></div>
+      <div class="modal-btns">
+        <button class="cancel" onclick="closeModal()">Cancel</button>
+        <button class="save" onclick="saveHolding()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account modal -->
+  <div class="modal-bg" id="accountModal">
+    <div class="modal">
+      <h3>Add Account</h3>
+      <label>Account name</label>
+      <input id="aName" placeholder="Roth IRA, Fidelity..." />
+      <div class="error-msg" id="accountError"></div>
+      <div class="modal-btns">
+        <button class="cancel" onclick="closeAccountModal()">Cancel</button>
+        <button class="save" onclick="saveAccount()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let state = { accounts: [], prices: {}, lastUpdated: null };
+    let currentAccountId = null;
+
+    function loadState() {
+      try { const s = localStorage.getItem('bk_ptstate'); if (s) state = JSON.parse(s); } catch(e) {}
+      if (!state.accounts || !state.accounts.length) {
+        state = { accounts: [
+          { id: 'acct1', name: 'Main Brokerage', holdings: [] },
+          { id: 'acct2', name: 'Roth IRA', holdings: [] }
+        ], prices: {}, lastUpdated: null };
+      }
+    }
+
+    function saveState() { try { localStorage.setItem('bk_ptstate', JSON.stringify(state)); } catch(e) {} }
+
+    function fmt(n) { return n == null ? '—' : '$' + n.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}); }
+    function fmtChg(n) { return n == null ? '' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
+
+    async function fetchPrice(ticker) {
+      try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=2d`;
+        const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+        const d = await r.json();
+        const meta = d?.chart?.result?.[0]?.meta;
+        if (!meta) return null;
+        const price = meta.regularMarketPrice;
+        const prev = meta.chartPreviousClose || meta.previousClose;
+        const chgPct = prev ? ((price - prev) / prev) * 100 : null;
+        return { price, chgPct };
+      } catch(e) { return null; }
+    }
+
+    async function refreshAll() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('spinning'); btn.disabled = true;
+      const tickers = [...new Set(state.accounts.flatMap(a => a.holdings.map(h => h.ticker)))];
+      const results = await Promise.all(tickers.map(t => fetchPrice(t).then(r => [t, r])));
+      results.forEach(([t, r]) => { if (r) state.prices[t] = r; });
+      state.lastUpdated = new Date().toLocaleTimeString();
+      saveState(); render();
+      btn.classList.remove('spinning'); btn.disabled = false;
+    }
+
+    function render() {
+      const list = document.getElementById('accountsList');
+      list.innerHTML = '';
+      let totalVal = 0, totalDayGain = 0, totalPos = 0, hasPrices = false;
+
+      state.accounts.forEach(acct => {
+        let acctVal = 0;
+        const rows = acct.holdings.map((h, hi) => {
+          const p = state.prices[h.ticker];
+          const price = p?.price;
+          const chgPct = p?.chgPct;
+          const val = price != null ? price * h.shares : null;
+          if (val != null) { acctVal += val; hasPrices = true; }
+          const dayChg = (price != null && chgPct != null) ? (price - price / (1 + chgPct/100)) * h.shares : null;
+          if (dayChg != null) totalDayGain += dayChg;
+          totalPos++;
+          const priceCell = price != null
+            ? `<span class="price-mono">${fmt(price)}</span> <span class="chg ${chgPct >= 0 ? 'pos':'neg'}">${fmtChg(chgPct)}</span>`
+            : `<span class="loading-price">fetching...</span>`;
+          return `<tr>
+            <td><span class="ticker">${h.ticker}</span></td>
+            <td class="r">${h.shares.toLocaleString('en-US',{maximumFractionDigits:4})}</td>
+            <td class="r">${priceCell}</td>
+            <td class="r price-mono">${val != null ? fmt(val) : '—'}</td>
+            <td class="r price-mono">${h.costBasis ? fmt(h.costBasis * h.shares) : '—'}</td>
+            <td class="r"><button class="del-row" onclick="deleteHolding('${acct.id}',${hi})">×</button></td>
+          </tr>`;
+        }).join('');
+
+        totalVal += acctVal;
+        list.innerHTML += `<div class="account-card">
+          <div class="account-header">
+            <div class="account-name-wrap">
+              <div class="account-dot"></div>
+              <span class="account-name">${acct.name}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="account-total">${acctVal ? fmt(acctVal) : '—'}</span>
+              <div class="account-actions">
+                <button class="btn-small" onclick="openAddStock('${acct.id}')">+ Add</button>
+                <button class="btn-small danger" onclick="deleteAccount('${acct.id}')">Remove</button>
+              </div>
+            </div>
+          </div>
+          ${acct.holdings.length ? `<table class="holdings-table">
+            <thead><tr>
+              <th>Ticker</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Market value</th><th class="r">Cost basis</th><th class="r"></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>` : `<div class="empty">No holdings — click + Add to get started.</div>`}
+        </div>`;
+      });
+
+      document.getElementById('totalVal').textContent = hasPrices ? fmt(totalVal) : '—';
+      const dg = document.getElementById('dayGain');
+      if (hasPrices) {
+        dg.textContent = (totalDayGain >= 0 ? '+' : '') + fmt(totalDayGain);
+        dg.className = 'metric-value ' + (totalDayGain >= 0 ? 'pos' : 'neg');
+      } else { dg.textContent = '—'; dg.className = 'metric-value'; }
+      document.getElementById('acctCount').textContent = state.accounts.length;
+      document.getElementById('posCount').textContent = totalPos;
+      if (state.lastUpdated) document.getElementById('lastUpdated').textContent = 'Updated ' + state.lastUpdated;
+    }
+
+    function openAddStock(acctId) {
+      currentAccountId = acctId;
+      ['mTicker','mShares','mCost'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('modalError').textContent = '';
+      document.getElementById('stockModal').classList.add('open');
+      setTimeout(() => document.getElementById('mTicker').focus(), 50);
+    }
+    function closeModal() { document.getElementById('stockModal').classList.remove('open'); }
+
+    async function saveHolding() {
+      const ticker = document.getElementById('mTicker').value.trim().toUpperCase();
+      const shares = parseFloat(document.getElementById('mShares').value);
+      const cost = parseFloat(document.getElementById('mCost').value) || null;
+      const err = document.getElementById('modalError');
+      if (!ticker) { err.textContent = 'Enter a ticker symbol.'; return; }
+      if (!shares || shares <= 0) { err.textContent = 'Enter a valid share count.'; return; }
+      err.textContent = 'Fetching price...';
+      const p = await fetchPrice(ticker);
+      if (!p) { err.textContent = `Could not find "${ticker}". Check the symbol.`; return; }
+      state.prices[ticker] = p;
+      const acct = state.accounts.find(a => a.id === currentAccountId);
+      const existing = acct.holdings.find(h => h.ticker === ticker);
+      if (existing) {
+        const newTotal = existing.shares + shares;
+        if (cost && existing.costBasis) existing.costBasis = (existing.costBasis * existing.shares + cost * shares) / newTotal;
+        existing.shares = newTotal;
+      } else {
+        acct.holdings.push({ ticker, shares, costBasis: cost });
+      }
+      saveState(); render(); closeModal();
+    }
+
+    function deleteHolding(acctId, idx) {
+      state.accounts.find(a => a.id === acctId).holdings.splice(idx, 1);
+      saveState(); render();
+    }
+    function deleteAccount(acctId) {
+      if (!confirm('Remove this account and all holdings?')) return;
+      state.accounts = state.accounts.filter(a => a.id !== acctId);
+      saveState(); render();
+    }
+
+    function openAddAccount() {
+      document.getElementById('aName').value = '';
+      document.getElementById('accountError').textContent = '';
+      document.getElementById('accountModal').classList.add('open');
+      setTimeout(() => document.getElementById('aName').focus(), 50);
+    }
+    function closeAccountModal() { document.getElementById('accountModal').classList.remove('open'); }
+    function saveAccount() {
+      const name = document.getElementById('aName').value.trim();
+      if (!name) { document.getElementById('accountError').textContent = 'Enter an account name.'; return; }
+      state.accounts.push({ id: 'acct_' + Date.now(), name, holdings: [] });
+      saveState(); render(); closeAccountModal();
+    }
+
+    // Modals close on backdrop click
+    document.getElementById('stockModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+    document.getElementById('accountModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAccountModal(); });
+
+    // Settings
+    const cogBtn = document.getElementById('cogBtn');
+    const overlay = document.getElementById('settingsOverlay');
+    const backdrop = document.getElementById('settingsBackdrop');
+    const themeToggle = document.getElementById('themeToggle');
+
+    cogBtn.addEventListener('click', () => overlay.classList.toggle('open'));
+    backdrop.addEventListener('click', () => overlay.classList.remove('open'));
+
+    themeToggle.addEventListener('change', () => {
+      const theme = themeToggle.checked ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('bk_theme', theme);
+    });
+
+    // Load saved theme
+    const savedTheme = localStorage.getItem('bk_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    if (savedTheme === 'light') themeToggle.checked = true;
+
+    loadState();
+    render();
+    refreshAll();
+    setInterval(refreshAll, 60000);
+  </script>
+</body>
+</html>
