@@ -423,7 +423,7 @@
 <body>
 
   <header class="site-header">
-    <a href="brandon-knight.com">← Back</a>
+    <a href="index.html">← Back</a>
     <div class="header-title">
       <h1>Brandon Knight</h1>
       <p>Portfolio Tracker</p>
@@ -528,15 +528,19 @@
     function fmt(n) { return n == null ? '—' : '$' + n.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}); }
     function fmtChg(n) { return n == null ? '' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
 
+    const FINNHUB_KEY = 'd7v1jp9r01qp7l70mas0d7v1jp9r01qp7l70masg';
+
     async function fetchPrice(ticker) {
       try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=2d`;
-        const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+        const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`, {
+          method: 'GET',
+          headers: { 'X-Finnhub-Token': FINNHUB_KEY }
+        });
+        if (!r.ok) return null;
         const d = await r.json();
-        const meta = d?.chart?.result?.[0]?.meta;
-        if (!meta) return null;
-        const price = meta.regularMarketPrice;
-        const prev = meta.chartPreviousClose || meta.previousClose;
+        if (!d || !d.c || d.c === 0) return null;
+        const price = d.c;
+        const prev = d.pc;
         const chgPct = prev ? ((price - prev) / prev) * 100 : null;
         return { price, chgPct };
       } catch(e) { return null; }
