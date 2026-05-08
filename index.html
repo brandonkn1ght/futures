@@ -485,7 +485,7 @@
       <input id="mTicker" placeholder="AAPL" style="text-transform:uppercase" />
       <label>Shares</label>
       <input id="mShares" type="number" placeholder="10" min="0.0001" step="any" />
-      <label>Cost basis per share (optional)</label>
+      <label>Avg buy price per share (optional)</label>
       <input id="mCost" type="number" placeholder="150.00" min="0" step="any" />
       <div class="error-msg" id="modalError"></div>
       <div class="modal-btns">
@@ -532,10 +532,7 @@
 
     async function fetchPrice(ticker) {
       try {
-        const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`, {
-          method: 'GET',
-          headers: { 'X-Finnhub-Token': FINNHUB_KEY }
-        });
+        const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`);
         if (!r.ok) return null;
         const d = await r.json();
         if (!d || !d.c || d.c === 0) return null;
@@ -603,7 +600,7 @@
           </div>
           ${acct.holdings.length ? `<div class="table-wrap"><table class="holdings-table">
             <thead><tr>
-              <th>Ticker</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Value</th><th class="r col-cost">Cost basis</th><th class="r"></th>
+              <th>Ticker</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Value</th><th class="r col-cost">Avg buy price</th><th class="r"></th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table></div>` : `<div class="empty">No holdings — click + Add to get started.</div>`}
