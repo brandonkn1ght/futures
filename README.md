@@ -1,4 +1,4 @@
-# Fu✝ures
+# Fu†ures
 
 A minimal, static stock tracker. Live prices, multiple accounts, no backend — data never leaves your browser.
 
