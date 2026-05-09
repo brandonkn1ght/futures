@@ -48,19 +48,27 @@ async function fetchPrice(ticker) {
   } catch { return null; }
 }
 
-async function fetchHistoricalPrices(ticker) {
-  const key = finnhubKey();
-  if (!key) return null;
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - (31 * 24 * 60 * 60);
+/* Historical closes from Stooq (free, no key, CSV) */
+async function fetchHistoricalPrices(ticker, fromDate) {
+  const today = new Date().toISOString().split('T')[0];
+  const from = fromDate || new Date(Date.now() - 31 * 86400 * 1000).toISOString().split('T')[0];
+  const sym = ticker.toLowerCase().replace(/\./g, '-');
   try {
-    const r = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${from}&to=${to}&token=${encodeURIComponent(key)}`);
+    const r = await fetch(`https://stooq.com/q/d/l/?s=${encodeURIComponent(sym)}.us&i=d&d1=${from.replace(/-/g, '')}&d2=${today.replace(/-/g, '')}`);
     if (!r.ok) return null;
-    const d = await r.json();
-    if (d.s !== 'ok' || !d.c?.length) return null;
+    const csv = (await r.text()).trim();
+    if (!csv || csv.toLowerCase().startsWith('no data')) return null;
+    const lines = csv.split('\n');
+    const header = lines[0].toLowerCase().split(',');
+    const di = header.indexOf('date'), ci = header.indexOf('close');
+    if (di < 0 || ci < 0) return null;
     const out = {};
-    d.t.forEach((ts, i) => { if (d.c[i] != null) out[new Date(ts * 1000).toISOString().split('T')[0]] = d.c[i]; });
-    return Object.keys(out).length > 1 ? out : null;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      const close = parseFloat(cols[ci]);
+      if (cols[di] && !isNaN(close)) out[cols[di]] = close;
+    }
+    return Object.keys(out).length ? out : null;
   } catch { return null; }
 }
 
@@ -159,8 +167,8 @@ async function backfillHistory(acctId) {
   if (!acct?.holdings.length) return;
   const histMap = {};
   for (const h of acct.holdings) {
-    const prices = await fetchHistoricalPrices(h.ticker);
-    if (prices) histMap[h.ticker] = { prices, shares: h.shares };
+    const prices = await fetchHistoricalPrices(h.ticker, h.purchaseDate);
+    if (prices) histMap[h.ticker] = { prices, shares: h.shares, purchaseDate: h.purchaseDate || null };
   }
   if (!Object.keys(histMap).length) return;
   const allDates = new Set();
@@ -170,13 +178,14 @@ async function backfillHistory(acctId) {
   [...allDates].sort().forEach(date => {
     if (existing.has(date)) return;
     let val = 0, hasData = false;
-    Object.values(histMap).forEach(({ prices, shares }) => {
+    Object.values(histMap).forEach(({ prices, shares, purchaseDate }) => {
+      if (purchaseDate && date < purchaseDate) return;
       if (prices[date] != null) { val += prices[date] * shares; hasData = true; }
     });
     if (hasData && val > 0) state.history[acctId].push({ date, value: val });
   });
   state.history[acctId].sort((a, b) => a.date.localeCompare(b.date));
-  if (state.history[acctId].length > 90) state.history[acctId] = state.history[acctId].slice(-90);
+  if (state.history[acctId].length > 750) state.history[acctId] = state.history[acctId].slice(-750);
 }
 
 function pruneHistory() {
@@ -199,7 +208,7 @@ function takeSnapshot() {
     else {
       state.history[acct.id].push({ date: today, value: val });
       state.history[acct.id].sort((a, b) => a.date.localeCompare(b.date));
-      if (state.history[acct.id].length > 90) state.history[acct.id].shift();
+      if (state.history[acct.id].length > 750) state.history[acct.id].shift();
     }
   });
 }
@@ -325,6 +334,10 @@ function initTickerSearch() {
     clearTimeout(searchTimer);
     const q = input.value.trim();
     if (!q) return closeDrop();
+    if (!finnhubKey()) {
+      drop.innerHTML = '<div class="ticker-searching">Add your Finnhub key in Settings to enable search</div>';
+      drop.classList.add('open'); return;
+    }
     searchTimer = setTimeout(async () => {
       const results = await searchStocks(q);
       dropdownActive = -1;
@@ -357,6 +370,9 @@ const closeDrop = () => { const d = $('tickerDropdown'); if (d) { d.classList.re
 function openAddStock(acctId) {
   currentAccountId = acctId;
   ['mTicker', 'mShares', 'mCost'].forEach(id => $(id).value = '');
+  const today = new Date().toISOString().split('T')[0];
+  $('mDate').value = today;
+  $('mDate').max = today;
   $('modalError').textContent = '';
   closeDrop();
   $('stockModal').classList.add('open');
@@ -369,6 +385,7 @@ async function saveHolding() {
   const ticker = $('mTicker').value.trim().toUpperCase().split(' ')[0];
   const shares = parseFloat($('mShares').value);
   const cost = parseFloat($('mCost').value) || null;
+  const purchaseDate = $('mDate').value || new Date().toISOString().split('T')[0];
   const err = $('modalError');
   if (!ticker) { err.textContent = 'Enter a ticker symbol.'; return; }
   if (!shares || shares <= 0) { err.textContent = 'Enter a valid share count.'; return; }
@@ -383,7 +400,8 @@ async function saveHolding() {
     const total = ex.shares + shares;
     if (cost && ex.costBasis) ex.costBasis = (ex.costBasis * ex.shares + cost * shares) / total;
     ex.shares = total;
-  } else { acct.holdings.push({ ticker, shares, costBasis: cost }); }
+    if (!ex.purchaseDate || purchaseDate < ex.purchaseDate) ex.purchaseDate = purchaseDate;
+  } else { acct.holdings.push({ ticker, shares, costBasis: cost, purchaseDate }); }
   takeSnapshot(); saveState(); render(); closeModal();
   backfillHistory(currentAccountId).then(() => { saveState(); render(); });
 }
