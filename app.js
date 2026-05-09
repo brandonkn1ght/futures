@@ -234,7 +234,7 @@ function renderMainChart() {
   const ctx = canvas.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-  const PAD = { top: 12, right: 10, bottom: 26, left: 54 };
+  const PAD = { top: 16, right: 14, bottom: 32, left: 62 };
   const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
   const dateIdx = new Map(dates.map((d, i) => [d, i]));
 
@@ -255,10 +255,10 @@ function renderMainChart() {
   for (let i = 0; i <= 3; i++) {
     const v = minV + (maxV - minV) * (i / 3), y = toY(v);
     ctx.strokeStyle = gridC; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
-    ctx.fillStyle = labelC; ctx.font = '9px Courier New, monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = labelC; ctx.font = '11px Courier New, monospace'; ctx.textAlign = 'right';
     ctx.fillText(v >= 1000 ? '$' + (v / 1000).toFixed(0) + 'k' : '$' + Math.round(v), PAD.left - 4, y + 3);
   }
-  ctx.fillStyle = labelC; ctx.font = '9px Georgia, serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = labelC; ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center';
   const iv = Math.max(1, Math.floor(dates.length / 4));
   dates.forEach((d, i) => { if (i % iv !== 0 && i !== dates.length - 1) return; ctx.fillText(d.slice(5), toX(i), H - 5); });
 
