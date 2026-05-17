@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zero-Knowledge Portfolio Dashboard</title>
+    <title>Portfolio Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -95,7 +95,6 @@
             border-radius: 6px;
             outline: none;
         }
-        /* Modal Overlay Engine Styles */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -126,28 +125,28 @@
     <div class="main-layout">
         
         <div class="dashboard-header">
-            <h2>Asset Matrix Core</h2>
+            <h2>Portfolio</h2>
             <div style="display:flex; gap:10px; align-items:center;">
-                <input id="finnhubKey" type="password" placeholder="Finnhub API Token Key" style="width:160px;">
-                <button id="refreshBtn">↻ Recalculate</button>
+                <input id="finnhubKey" type="password" placeholder="Finnhub API Key" style="width:160px;">
+                <button id="refreshBtn">↻ Refresh</button>
             </div>
         </div>
 
         <div class="stats-grid">
             <div class="stat-card">
-                <div style="color:var(--text-muted); font-size:12px;">Net Portfolio Valuation</div>
+                <div style="color:var(--text-muted); font-size:12px;">Total Value</div>
                 <div class="stat-val" id="totalVal">$0.00</div>
             </div>
             <div class="stat-card">
-                <div style="color:var(--text-muted); font-size:12px;">24h Asset Momentum</div>
+                <div style="color:var(--text-muted); font-size:12px;">24h Change</div>
                 <div class="stat-val" id="dayGain">0.00%</div>
             </div>
             <div class="stat-card">
-                <div style="color:var(--text-muted); font-size:12px;">Tracked Accounts</div>
+                <div style="color:var(--text-muted); font-size:12px;">Accounts</div>
                 <div class="stat-val" id="acctCount">0</div>
             </div>
             <div class="stat-card">
-                <div style="color:var(--text-muted); font-size:12px;">Total Open Allocations</div>
+                <div style="color:var(--text-muted); font-size:12px;">Positions</div>
                 <div class="stat-val" id="posCount">0</div>
             </div>
         </div>
@@ -155,8 +154,7 @@
         <div class="content-split">
             <div style="display:flex; flex-direction:column; gap:20px;">
                 <div class="chart-panel">
-                    <div class="chart-panel-header">
-                        </div>
+                    <div class="chart-panel-header"></div>
                     <div id="chartCanvasWrap">
                         <canvas id="mainChart"></canvas>
                     </div>
@@ -164,8 +162,8 @@
 
                 <div class="account-panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                        <h3 style="margin:0; font-size:16px;">Monitored Account Custodies</h3>
-                        <button class="btn-small" data-action="add-account">+ Create Account Node</button>
+                        <h3 style="margin:0; font-size:16px;">Accounts</h3>
+                        <button class="btn-small" data-action="add-account">+ New Account</button>
                     </div>
                     <div id="accountsList"></div>
                 </div>
@@ -173,9 +171,8 @@
 
             <div style="display:flex; flex-direction:column; gap:20px;">
                 <div class="settings-panel">
-                    <div class="settings-panel-header"><span>Configuration Engine</span></div>
-                    <div class="ticker-wrap" style="margin-top:12px;">
-                        </div>
+                    <div class="settings-panel-header"><span>Settings</span></div>
+                    <div class="ticker-wrap" style="margin-top:12px;"></div>
                 </div>
                 <div id="lastUpdated" style="font-size:11px; color:var(--text-muted); text-align:center;"></div>
             </div>
@@ -184,8 +181,8 @@
 
     <div id="accountModal" class="modal-overlay">
         <div class="modal-content">
-            <h3 style="margin:0 0 10px 0;">Initialize Account Node</h3>
-            <input id="aName" type="text" placeholder="Account Descriptive Name (e.g., Cold Storage)">
+            <h3 style="margin:0 0 10px 0;">New Account</h3>
+            <input id="aName" type="text" placeholder="Account Name (e.g., Cold Storage)">
             <div style="display:flex; gap:8px; margin-top:10px;">
                 <button data-action="save-account" style="flex:1; background:var(--accent);">Save</button>
                 <button data-action="close-account-modal" style="flex:1;">Cancel</button>
@@ -195,23 +192,23 @@
 
     <div id="stockModal" class="modal-overlay">
         <div class="modal-content">
-            <h3 id="mTitle" style="margin:0;">Modify Allocation Entry</h3>
+            <h3 id="mTitle" style="margin:0;">Edit Position</h3>
             <div id="modalError" style="color:#f44336; font-size:12px;"></div>
             
-            <input id="mTicker" type="text" placeholder="Ticker Identifier (e.g., AAPL or BTC)">
-            <input id="mShares" type="number" step="any" placeholder="Volume / Token Units">
-            <input id="mCost" type="number" step="any" placeholder="Cost Basis Purchase Valuation ($)">
+            <input id="mTicker" type="text" placeholder="Ticker (e.g., AAPL, BTC)">
+            <input id="mShares" type="number" step="any" placeholder="Shares / Amount">
+            <input id="mCost" type="number" step="any" placeholder="Cost Basis ($)">
             <input id="mDate" type="date">
             
             <div style="display:flex; gap:8px; margin-top:10px;">
-                <button id="mSaveBtn" style="flex:1; background:var(--accent);">Commit Entry</button>
-                <button data-action="close-modal" style="flex:1;">Dismiss</button>
+                <button id="mSaveBtn" style="flex:1; background:var(--accent);">Save</button>
+                <button data-action="close-modal" style="flex:1;">Cancel</button>
             </div>
         </div>
     </div>
 
     <script>
-    const PortfolioState = {
+    const state = {
         data: { accounts: [], targets: {}, finnhubKey: '', theme: 'dark' },
         activeView: 'performance', activeAccountId: null, activeHoldingId: null, charts: { main: null, sector: null },
         cryptoMap: { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', ADA: 'cardano', DOT: 'polkadot', XRP: 'ripple', DOGE: 'dogecoin', LINK: 'chainlink', AVAX: 'avalanche-2', MATIC: 'polygon' }
@@ -221,7 +218,6 @@
     const $$ = q => document.querySelector(q);
     const viewSet = (id, txt) => $(id) && ($(id).textContent = txt);
 
-    // Escape raw string attributes dynamically to comprehensively prevent DOM XSS vulnerabilities [cite: 12]
     const escapeHTML = str => String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[m]));
 
     const CryptoEngine = {
@@ -234,7 +230,6 @@
             const enc = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await this.deriveKey(p, s), new TextEncoder().encode(str));
             const out = new Uint8Array(28 + enc.byteLength); out.set(s); out.set(iv, 16); out.set(new Uint8Array(enc), 28);
             
-            // Chunked conversion loop strategy blocks Maximum Call Stack Overflow limitations safely
             let binary = '';
             const chunkSize = 0xffff; 
             for (let i = 0; i < out.length; i += chunkSize) {
@@ -251,50 +246,50 @@
     const DataSyncManager = {
         async syncCloud() {
             const p = $('syncPassphrase').value, ep = $('syncEndpoint').value;
-            if (!p) return alert('Sync Passphrase required.');
+            if (!p) return alert('Passphrase required.');
             try {
-                const enc = await CryptoEngine.encryptData(JSON.stringify(PortfolioState.data), p);
+                const enc = await CryptoEngine.encryptData(JSON.stringify(state.data), p);
                 if (ep) {
                     const response = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: enc, updated_at: new Date().toISOString() }) });
-                    if (!response.ok) throw new Error(`HTTP System Rejection: ${response.status}`);
-                    viewSet('syncStatusHint', 'Cloud Synchronization successful.');
+                    if (!response.ok) throw new Error(`Status: ${response.status}`);
+                    viewSet('syncStatusHint', 'Synced to cloud.');
                 } else { 
                     localStorage.setItem('zk_sync_backup', enc); 
-                    viewSet('syncStatusHint', 'Encrypted Snapshot saved locally.'); 
+                    viewSet('syncStatusHint', 'Saved locally.'); 
                 }
             } catch (err) { 
-                console.error('Synchronization Network Failure Context:', err); // Meaningful logging framework mapping [cite: 20]
-                viewSet('syncStatusHint', `Sync failed: ${err.message || 'Processing Error'}`); 
+                console.error('Sync failed:', err);
+                viewSet('syncStatusHint', `Error: ${err.message || 'Failed'}`); 
             }
         },
         async triggerPullRestore() {
             const p = $('syncPassphrase').value, ep = $('syncEndpoint').value;
-            if (!p) return alert('Sync Passphrase required to authorize decryption.');
+            if (!p) return alert('Passphrase required.');
             try {
                 let enc = '';
                 if (ep) {
                     const response = await fetch(ep);
-                    if (!response.ok) throw new Error(`Fetch rejection status: ${response.status}`);
+                    if (!response.ok) throw new Error(`Status: ${response.status}`);
                     enc = (await response.json()).payload;
                 } else {
                     enc = localStorage.getItem('zk_sync_backup') || '';
                 }
-                if (!enc) return viewSet('syncStatusHint', 'No remote data payload available.');
+                if (!enc) return viewSet('syncStatusHint', 'No backup found.');
                 
-                PortfolioState.data = JSON.parse(await CryptoEngine.decryptData(enc, p));
+                state.data = JSON.parse(await CryptoEngine.decryptData(enc, p));
                 AppEngine.saveLocalStorage(); 
-                await AppEngine.recalculateAndRenderAll();
-                viewSet('syncStatusHint', 'Data successfully pull-synchronized and decrypted.');
+                await AppEngine.refresh();
+                viewSet('syncStatusHint', 'Data restored.');
             } catch (err) { 
-                console.error('Decryption Routine Interruption Context:', err); // Avoid empty catch blocks [cite: 20]
-                viewSet('syncStatusHint', 'Sync verification broken. Check credentials or ciphertext integrity.'); 
+                console.error('Restore failed:', err);
+                viewSet('syncStatusHint', 'Decryption failed. Check passphrase.'); 
             }
         }
     };
 
     const AssetManager = {
         async fetchSectorData(t) {
-            const k = PortfolioState.data.finnhubKey;
+            const k = state.data.finnhubKey;
             const r = k && await fetch('https://finnhub.io/api/v1/stock/profile2?symbol=' + encodeURIComponent(t) + '&token=' + k).catch(() => null);
             return r?.ok ? (await r.json()).finnhubIndustry || 'Other' : 'Other';
         },
@@ -304,7 +299,7 @@
             return d?.[id] ? { price: d[id].usd || 0, change: d[id].usd_24h_change || 0 } : { price: 0, change: 0 };
         },
         async fetchEquityPrice(t) {
-            const k = PortfolioState.data.finnhubKey;
+            const k = state.data.finnhubKey;
             const r = k && await fetch('https://finnhub.io/api/v1/quote?symbol=' + encodeURIComponent(t) + '&token=' + k).catch(() => null);
             const d = r?.ok ? await r.json() : null;
             return d ? { price: d.c || 0, change: d.dp || 0 } : { price: 0, change: 0 };
@@ -313,94 +308,92 @@
 
     const TimelineEngine = {
         async updateTimelineFeed() {
-            const k = PortfolioState.data.finnhubKey, box = $('timelineEventsFeed');
+            const k = state.data.finnhubKey, box = $('timelineEventsFeed');
             if (!box) return;
-            if (!k) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">Provide Finnhub key to populate macro events stream.</div>';
-            const tks = [...new Set(PortfolioState.data.accounts.flatMap(a => a.holdings.filter(h => h.assetType === 'equity').map(h => h.ticker)))];
-            if (!tks.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No active structural stock holdings detected.</div>';
+            if (!k) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">Enter a Finnhub key to load events.</div>';
+            const tks = [...new Set(state.data.accounts.flatMap(a => a.holdings.filter(h => h.assetType === 'equity').map(h => h.ticker)))];
+            if (!tks.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No equity positions found.</div>';
             const start = new Date().toISOString().split('T')[0], end = new Date(Date.now() + 7776000000).toISOString().split('T')[0];
-            box.innerHTML = '<div style="color:#a5a1b8; font-size:12px;">Querying corporate timelines...</div>';
+            box.innerHTML = '<div style="color:#a5a1b8; font-size:12px;">Loading events...</div>';
             try {
                 let evts = [];
                 await Promise.all(tks.flatMap(tk => [
-                    fetch('https://finnhub.io/api/v1/calendar/dividend?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.dividendCalendar?.forEach(e => evts.push({ type: 'Dividend', date: new Date(e.date), label: '$' + e.symbol + ' Dividend Payout: $' + e.amount.toFixed(3) + ' per share on ' + e.date }))),
-                    fetch('https://finnhub.io/api/v1/calendar/earnings?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.earningsCalendar?.forEach(e => evts.push({ type: 'Earnings', date: new Date(e.date), label: '$' + e.symbol + ' Earnings Release scheduled Date: ' + e.date + ' (Quarter: ' + (e.quarter || 'N/A') + ')' })))
+                    fetch('https://finnhub.io/api/v1/calendar/dividend?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.dividendCalendar?.forEach(e => evts.push({ type: 'Dividend', date: new Date(e.date), label: '$' + e.symbol + ' Dividend: $' + e.amount.toFixed(3) + ' on ' + e.date }))),
+                    fetch('https://finnhub.io/api/v1/calendar/earnings?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.earningsCalendar?.forEach(e => evts.push({ type: 'Earnings', date: new Date(e.date), label: '$' + e.symbol + ' Earnings: ' + e.date + ' (Q' + (e.quarter || 'N/A') + ')' })))
                 ].map(p => p.catch(() => null))));
                 evts.sort((a, b) => a.date - b.date);
-                if (!evts.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No macro corporate events schedule within 90 days.</div>';
+                if (!evts.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No events found for the next 90 days.</div>';
                 box.innerHTML = evts.map(e => '<div class="timeline-event-row" style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #1c1a26; font-size:13px;"><span style="color:' + (e.type === 'Dividend' ? '#4caf50' : '#2196f3') + '">' + escapeHTML(e.label) + '</span><span style="font-size:10px; font-weight:700; background:#222030; color:#a5a1b8; padding:3px 6px; border-radius:4px; text-transform:uppercase;">' + e.type.toUpperCase() + '</span></div>').join('');
-            } catch { box.innerHTML = '<div style="color:#f44336; font-size:12px;">Failed parsing event sequence metrics stream.</div>'; }
+            } catch { box.innerHTML = '<div style="color:#f44336; font-size:12px;">Error loading events.</div>'; }
         }
     };
 
     const AppEngine = {
-        init() { this.injectLayoutExtensions(); this.loadLocalStorage(); this.bindUserInteractions(); this.recalculateAndRenderAll(); },
+        init() { this.injectLayoutExtensions(); this.loadLocalStorage(); this.bindUserInteractions(); this.refresh(); },
         injectLayoutExtensions() {
-            $$('.settings-panel')?.insertAdjacentHTML('beforeend', '<div class="settings-panel-header" style="margin-top: 16px; font-weight:600; font-size:14px; margin-bottom:10px;"><span>Private Zero-Knowledge Sync</span></div><div class="settings-row"><label class="settings-label">Sync Passphrase</label><input id="syncPassphrase" type="password" placeholder="Passphrase for AES key transformation"></div><div class="settings-row"><label class="settings-label">Custom Backup Server (Optional)</label><input id="syncEndpoint" type="text" placeholder="https://api.yourcloud.com/sync"><span class="settings-hint" id="syncStatusHint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Blank defaults encrypted storage block internally.</span></div><div class="settings-row" style="gap: 8px; flex-direction:row; margin-top:10px;"><button id="syncPushBtn" style="flex:1;">↑ Cloud Push</button><button id="syncPullBtn" style="flex:1;">↓ Cloud Pull</button></div>');
-            $$('.ticker-wrap')?.insertAdjacentHTML('beforebegin', '<div class="asset-type-segment" style="display:flex; gap:10px; margin-bottom:12px;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="equity" checked style="accent-color:#5c548a;"> Equity / ETF</label><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="crypto" style="accent-color:#5c548a;"> Cryptocurrency</label></div>');
-            $$('.chart-panel-header')?.insertAdjacentHTML('afterbegin', '<div class="chart-toggle-controls" style="display:flex; gap:8px;"><button class="btn-small active" id="viewPerformanceBtn" style="background:#5c548a; color:#fff;">Performance Trend</button><button class="btn-small" id="viewSectorBtn">Sector Exposure</button></div>');
+            $$('.settings-panel')?.insertAdjacentHTML('beforeend', '<div class="settings-panel-header" style="margin-top: 16px; font-weight:600; font-size:14px; margin-bottom:10px;"><span>Cloud Sync</span></div><div class="settings-row"><label class="settings-label">Passphrase</label><input id="syncPassphrase" type="password" placeholder="Passphrase"></div><div class="settings-row"><label class="settings-label">Backup Server (Optional)</label><input id="syncEndpoint" type="text" placeholder="https://api.example.com/sync"><span class="settings-hint" id="syncStatusHint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Leave blank to save only to local storage.</span></div><div class="settings-row" style="gap: 8px; flex-direction:row; margin-top:10px;"><button id="syncPushBtn" style="flex:1;">Backup Data</button><button id="syncPullBtn" style="flex:1;">Restore Data</button></div>');
+            $$('.ticker-wrap')?.insertAdjacentHTML('beforebegin', '<div class="asset-type-segment" style="display:flex; gap:10px; margin-bottom:12px;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="equity" checked style="accent-color:#5c548a;"> Stocks / ETFs</label><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="crypto" style="accent-color:#5c548a;"> Crypto</label></div>');
+            $$('.chart-panel-header')?.insertAdjacentHTML('afterbegin', '<div class="chart-toggle-controls" style="display:flex; gap:8px;"><button class="btn-small active" id="viewPerformanceBtn" style="background:#5c548a; color:#fff;">Performance</button><button class="btn-small" id="viewSectorBtn">Sectors</button></div>');
             $('chartCanvasWrap')?.insertAdjacentHTML('beforeend', '<canvas id="sectorChart" style="display:none;"></canvas>');
             $('chartCanvasWrap')?.parentNode?.insertAdjacentHTML('beforeend', '<div id="targetAllocationDashboard" style="display:none; background:#1c1a26; border:1px solid #2e2a42; border-radius:10px; padding:14px; margin-top:16px; max-height:200px; overflow-y:auto;"></div>');
-            $$('.main-layout')?.insertAdjacentHTML('beforeend', '<div class="timeline-panel" style="background:#13121a; border:1px solid #222030; border-radius:14px; padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.4);"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid #222030; padding-bottom:8px;"><h3 style="margin:0; font-size:16px; color:#fff; font-weight:600;">Passive Income & Macro Timeline Feed</h3></div><div id="timelineEventsFeed" style="display:flex; flex-direction:column; gap:4px;"></div></div>');
+            $$('.main-layout')?.insertAdjacentHTML('beforeend', '<div class="timeline-panel" style="background:#13121a; border:1px solid #222030; border-radius:14px; padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.4);"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid #222030; padding-bottom:8px;"><h3 style="margin:0; font-size:16px; color:#fff; font-weight:600;">Upcoming Dividends & Earnings</h3></div><div id="timelineEventsFeed" style="display:flex; flex-direction:column; gap:4px;"></div></div>');
         },
-        loadLocalStorage() { try { const p = localStorage.getItem('portfolio_core_state'); if (p) { PortfolioState.data = JSON.parse(p); $('finnhubKey').value = PortfolioState.data.finnhubKey || ''; } } catch {} },
-        saveLocalStorage() { localStorage.setItem('portfolio_core_state', JSON.stringify(PortfolioState.data)); },
+        loadLocalStorage() { try { const p = localStorage.getItem('portfolio_core_state'); if (p) { state.data = JSON.parse(p); $('finnhubKey').value = state.data.finnhubKey || ''; } } catch {} },
+        saveLocalStorage() { localStorage.setItem('portfolio_core_state', JSON.stringify(state.data)); },
         bindUserInteractions() {
-            const listeners = [
+            const handlers = [
                 ['#syncPushBtn', 'click', () => DataSyncManager.syncCloud()], ['#syncPullBtn', 'click', () => DataSyncManager.triggerPullRestore()],
                 ['#viewPerformanceBtn', 'click', () => this.toggleChartView('performance')], ['#viewSectorBtn', 'click', () => this.toggleChartView('sector')],
-                ['#finnhubKey', 'input', e => { PortfolioState.data.finnhubKey = e.target.value.trim(); this.saveLocalStorage(); }],
+                ['#finnhubKey', 'input', e => { state.data.finnhubKey = e.target.value.trim(); this.saveLocalStorage(); }],
                 ['[data-action="add-account"]', 'click', () => $('accountModal').style.display = 'flex'], ['[data-action="close-account-modal"]', 'click', () => $('accountModal').style.display = 'none'],
-                ['[data-action="save-account"]', 'click', () => { const n = $('aName').value.trim(); if (!n) return; PortfolioState.data.accounts.push({ id: 'acc_' + Date.now(), name: n, holdings: [] }); this.saveLocalStorage(); this.recalculateAndRenderAll(); $('aName').value = ''; $('accountModal').style.display = 'none'; }],
-                ['[data-action="close-modal"]', 'click', () => { $('stockModal').style.display = 'none'; PortfolioState.activeHoldingId = PortfolioState.activeAccountId = null; }],
+                ['[data-action="save-account"]', 'click', () => { const n = $('aName').value.trim(); if (!n) return; state.data.accounts.push({ id: 'acc_' + Date.now(), name: n, holdings: [] }); this.saveLocalStorage(); this.refresh(); $('aName').value = ''; $('accountModal').style.display = 'none'; }],
+                ['[data-action="close-modal"]', 'click', () => { $('stockModal').style.display = 'none'; state.activeHoldingId = state.activeAccountId = null; }],
                 ['#mSaveBtn', 'click', async () => {
                     const tk = $('mTicker').value.toUpperCase().trim(), sh = parseFloat($('mShares').value), dt = $('mDate').value, cst = parseFloat($('mCost').value) || 0, ty = $$('input[name="assetType"]:checked').value;
-                    if (!tk || isNaN(sh) || !dt) return viewSet('modalError', 'Please complete mandatory metrics initialization variables fields.');
-                    $('mSaveBtn').textContent = 'Processing Data...';
-                    const sec = ty === 'equity' ? await AssetManager.fetchSectorData(tk) : 'Cryptocurrency', acc = PortfolioState.data.accounts.find(a => a.id === PortfolioState.activeAccountId);
+                    if (!tk || isNaN(sh) || !dt) return viewSet('modalError', 'Fill out all required fields.');
+                    $('mSaveBtn').textContent = 'Saving...';
+                    const sec = ty === 'equity' ? await AssetManager.fetchSectorData(tk) : 'Cryptocurrency', acc = state.data.accounts.find(a => a.id === state.activeAccountId);
                     if (acc) {
-                        const h = PortfolioState.activeHoldingId ? acc.holdings.find(x => x.id === PortfolioState.activeHoldingId) : null;
+                        const h = state.activeHoldingId ? acc.holdings.find(x => x.id === state.activeHoldingId) : null;
                         if (h) Object.assign(h, { ticker: tk, shares: sh, date: dt, cost: cst, assetType: ty, sector: sec });
                         else acc.holdings.push({ id: 'hold_' + Date.now(), ticker: tk, shares: sh, date: dt, cost: cst, assetType: ty, sector: sec, actualPrice: 0, dayChange: 0 });
                     }
-                    this.saveLocalStorage(); await this.recalculateAndRenderAll(); $('stockModal').style.display = 'none'; $('mSaveBtn').textContent = 'Add'; PortfolioState.activeHoldingId = PortfolioState.activeAccountId = null;
-                }], ['#refreshBtn', 'click', () => this.recalculateAndRenderAll()]
+                    this.saveLocalStorage(); await this.refresh(); $('stockModal').style.display = 'none'; $('mSaveBtn').textContent = 'Add'; state.activeHoldingId = state.activeAccountId = null;
+                }], ['#refreshBtn', 'click', () => this.refresh()]
             ];
             
-            // Comprehensive query-selector iteration repairs global action bindings across nodes
-            listeners.forEach(([selector, event, handler]) => {
-                if (selector.startsWith('#')) {
-                    $(selector.slice(1))?.addEventListener(event, handler);
+            handlers.forEach(([sel, evt, fn]) => {
+                if (sel.startsWith('#')) {
+                    $(sel.slice(1))?.addEventListener(evt, fn);
                 } else {
-                    document.querySelectorAll(selector).forEach(element => element.addEventListener(event, handler));
+                    document.querySelectorAll(sel).forEach(el => el.addEventListener(evt, fn));
                 }
             });
         },
         toggleChartView(m) {
-            PortfolioState.activeView = m; const isP = m === 'performance';
+            state.activeView = m; const isP = m === 'performance';
             [['viewPerformanceBtn', isP], ['viewSectorBtn', !isP]].forEach(([id, a]) => $(id) && ($(id).style.cssText = a ? 'background:#5c548a; color:#fff;' : 'background:#222030; color:#a5a1b8;'));
             [['mainChart', isP], ['sectorChart', !isP], ['targetAllocationDashboard', !isP]].forEach(([id, s]) => $(id) && ($(id).style.display = s ? 'block' : 'none'));
             if (!isP) this.renderSectorChart();
         },
-        async recalculateAndRenderAll() {
+        async refresh() {
             let total = 0, weighted = 0, count = 0;
-            const executionPromises = [];
+            const promises = [];
 
-            // Algorithmic optimization avoids O(N) network bottlenecks using concurrent batching [cite: 16]
-            for (const acc of PortfolioState.data.accounts) {
+            for (const acc of state.data.accounts) {
                 for (const h of acc.holdings) {
                     count++;
-                    const calculationTask = (async (holding) => {
+                    const task = (async (holding) => {
                         let metrics = { price: 0, change: 0 };
                         try {
                             if (holding.assetType === 'crypto') {
-                                const targetId = PortfolioState.cryptoMap[holding.ticker] || holding.ticker.toLowerCase();
+                                const targetId = state.cryptoMap[holding.ticker] || holding.ticker.toLowerCase();
                                 metrics = await AssetManager.fetchCryptoPrice(targetId);
                             } else {
                                 metrics = await AssetManager.fetchEquityPrice(holding.ticker);
                             }
                         } catch (e) {
-                            console.error(`Asset Metric Retrieval Fault for target [${holding.ticker}]:`, e);
+                            console.error(`Error fetching data for ${holding.ticker}:`, e);
                         }
                         
                         holding.actualPrice = metrics.price; 
@@ -410,35 +403,35 @@
                         return { positionVal, weightedChange: positionVal * (metrics.change / 100) };
                     })(h);
                     
-                    executionPromises.push(calculationTask);
+                    promises.push(task);
                 }
             }
 
-            const metricsSummary = await Promise.all(executionPromises);
-            metricsSummary.forEach(res => {
+            const results = await Promise.all(promises);
+            results.forEach(res => {
                 total += res.positionVal;
                 weighted += res.weightedChange;
             });
 
-            viewSet('acctCount', PortfolioState.data.accounts.length); viewSet('posCount', count);
+            viewSet('acctCount', state.data.accounts.length); viewSet('posCount', count);
             viewSet('totalVal', '$' + total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             
             const pct = total > 0 ? (weighted / total) * 100 : 0, dg = $('dayGain');
             if (dg) { dg.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'; dg.style.color = pct >= 0 ? '#4caf50' : '#f44336'; }
-            viewSet('lastUpdated', 'Last verification checking loop sequence: ' + new Date().toLocaleTimeString());
+            viewSet('lastUpdated', 'Updated: ' + new Date().toLocaleTimeString());
             
-            this.renderAccountsStructure(); 
-            if (PortfolioState.activeView === 'sector') this.renderSectorChart();
+            this.renderAccounts(); 
+            if (state.activeView === 'sector') this.renderSectorChart();
             this.renderPerformanceChart();
             TimelineEngine.updateTimelineFeed();
         },
-        renderAccountsStructure() {
+        renderAccounts() {
             const box = $('accountsList'); if (!box) return; box.innerHTML = '';
-            PortfolioState.data.accounts.forEach(acc => {
+            state.data.accounts.forEach(acc => {
                 const val = acc.holdings.reduce((sum, h) => sum + (h.shares * (h.actualPrice || 0)), 0);
-                const card = document.createElement('div'); card.className = 'account-card-container'; card.style.cssText = 'background:#13121a; border:1px solid #222030; border-radius:12px; padding:16px; margin-bottom:14px;';
+                const card = document.createElement('div'); card.style.cssText = 'background:#13121a; border:1px solid #222030; border-radius:12px; padding:16px; margin-bottom:14px;';
                 
-                card.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><h4 style="margin:0; font-size:15px; color:#fff; font-weight:600;">' + escapeHTML(acc.name) + '</h4><span style="font-weight:700; color:#e2e1e6;">$' + val.toFixed(2) + '</span></div><div class="holdings-list" style="display:flex; flex-direction:column; gap:8px;"></div><button class="btn-small" style="width:100%; margin-top:10px; justify-content:center; background:#1c1a26; border-style:dashed;">+ Add Position Allocation</button>';
+                card.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><h4 style="margin:0; font-size:15px; color:#fff; font-weight:600;">' + escapeHTML(acc.name) + '</h4><span style="font-weight:700; color:#e2e1e6;">$' + val.toFixed(2) + '</span></div><div class="holdings-list" style="display:flex; flex-direction:column; gap:8px;"></div><button class="btn-small" style="width:100%; margin-top:10px; justify-content:center; background:#1c1a26; border-style:dashed;">+ Add Position</button>';
                 const hl = card.querySelector('.holdings-list');
                 
                 acc.holdings.forEach(h => {
@@ -448,45 +441,44 @@
                     
                     row.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        PortfolioState.activeAccountId = acc.id; PortfolioState.activeHoldingId = h.id;
+                        state.activeAccountId = acc.id; state.activeHoldingId = h.id;
                         viewSet('mTitle', 'Edit Holding'); $('mTicker').value = h.ticker; $('mShares').value = h.shares; $('mDate').value = h.date; $('mCost').value = h.cost;
                         document.querySelectorAll('input[name="assetType"]').forEach(r => r.checked = r.value === h.assetType); $('stockModal').style.display = 'flex';
                     });
                     hl.appendChild(row);
                 });
                 card.querySelector('button').addEventListener('click', () => {
-                    PortfolioState.activeAccountId = acc.id; PortfolioState.activeHoldingId = null; viewSet('mTitle', 'Add Holding'); $('mTicker').value = $('mShares').value = $('mDate').value = $('mCost').value = ''; $('stockModal').style.display = 'flex';
+                    state.activeAccountId = acc.id; state.activeHoldingId = null; viewSet('mTitle', 'Add Holding'); $('mTicker').value = $('mShares').value = $('mDate').value = $('mCost').value = ''; $('stockModal').style.display = 'flex';
                 });
                 box.appendChild(card);
             });
         },
         renderPerformanceChart() {
-            if (!window.Chart) return;
-            if (PortfolioState.charts.main) return; // Prevent infinite re-instantiation memory leaks [cite: 18]
+            if (!window.Chart || state.charts.main) return;
             
-            PortfolioState.charts.main = new window.Chart($('mainChart').getContext('2d'), {
+            state.charts.main = new window.Chart($('mainChart').getContext('2d'), {
                 type: 'line',
-                data: { labels: ['Trading Start', 'Current Interval Assessment'], datasets: [{ label: 'Asset Net Capital Growth', data: [0, 100], borderColor: '#5c548a', backgroundColor: 'rgba(92, 84, 138, 0.1)', tension: 0.3, fill: true }] },
+                data: { labels: ['Start', 'Current Assessment'], datasets: [{ label: 'Growth', data: [0, 100], borderColor: '#5c548a', backgroundColor: 'rgba(92, 84, 138, 0.1)', tension: 0.3, fill: true }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#a5a1b8' } } }, scales: { x: { grid: { color: '#1c1a26' }, ticks: { color: '#a5a1b8' } }, y: { grid: { color: '#1c1a26' }, ticks: { color: '#a5a1b8' } } } }
             });
         },
         renderSectorChart() {
             const agg = {}, db = $('targetAllocationDashboard'); let grand = 0;
-            PortfolioState.data.accounts.forEach(a => a.holdings.forEach(h => { const v = h.shares * (h.actualPrice || 0); agg[h.sector] = (agg[h.sector] || 0) + v; grand += v; }));
+            state.data.accounts.forEach(a => a.holdings.forEach(h => { const v = h.shares * (h.actualPrice || 0); agg[h.sector] = (agg[h.sector] || 0) + v; grand += v; }));
             const secs = Object.keys(agg);
             if (db) {
-                db.innerHTML = '<h5 style="margin:0 0 10px 0; font-size:12px; uppercase; color:#76718a;">Target vs Actual Sector Exposure</h5>';
+                db.innerHTML = '<h5 style="margin:0 0 10px 0; font-size:12px; text-transform:uppercase; color:#76718a;">Target vs Actual Sectors</h5>';
                 secs.forEach(s => {
-                    const act = grand > 0 ? (agg[s] / grand) * 100 : 0, tg = PortfolioState.data.targets[s] || 0;
+                    const act = grand > 0 ? (agg[s] / grand) * 100 : 0, tg = state.data.targets[s] || 0;
                     const row = document.createElement('div'); row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px;';
                     row.innerHTML = '<span style="color:#fff; font-weight:500;">' + escapeHTML(s) + '</span><div style="display:flex; align-items:center; gap:8px;"><span style="color:#76718a;">Actual: ' + act.toFixed(1) + '%</span><span style="color:#a5a1b8;">Target %:</span><input type="number" value="' + tg + '" style="width:50px; background:#13121a; border:1px solid #2e2a42; color:#fff; text-align:center; border-radius:4px; padding:2px;"></div>';
-                    row.querySelector('input').addEventListener('change', (e) => { PortfolioState.data.targets[s] = parseFloat(e.target.value) || 0; this.saveLocalStorage(); });
+                    row.querySelector('input').addEventListener('change', (e) => { state.data.targets[s] = parseFloat(e.target.value) || 0; this.saveLocalStorage(); });
                     db.appendChild(row);
                 });
             }
             if (!window.Chart) return;
-            if (PortfolioState.charts.sector) PortfolioState.charts.sector.destroy();
-            PortfolioState.charts.sector = new window.Chart($('sectorChart').getContext('2d'), {
+            if (state.charts.sector) state.charts.sector.destroy();
+            state.charts.sector = new window.Chart($('sectorChart').getContext('2d'), {
                 type: 'doughnut',
                 data: { labels: secs, datasets: [{ data: secs.map(s => agg[s]), backgroundColor: ['#5c548a', '#34a853', '#fbbc05', '#ea4335', '#4285f4', '#9c27b0', '#00bcd4', '#ff9800'].slice(0, secs.length), borderWidth: 1, borderColor: '#13121a' }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#a5a1b8', font: { family: 'sans-serif', size: 12 } } } } }
