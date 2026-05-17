@@ -1,4 +1,4 @@
-// [CC-STATE: Run=2, TotalSlashed=566]
+// [CC-STATE: Run=3, TotalSlashed=565]
 const PortfolioState = {
     data: { accounts: [], targets: {}, finnhubKey: '', theme: 'dark' },
     activeView: 'performance', activeAccountId: null, activeHoldingId: null, charts: { main: null, sector: null },
@@ -51,17 +51,17 @@ const DataSyncManager = {
 const AssetManager = {
     async fetchSectorData(t) {
         const k = PortfolioState.data.finnhubKey;
-        const r = k && await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(t)}&token=${k}`).catch(() => null);
+        const r = k && await fetch('https://finnhub.io/api/v1/stock/profile2?symbol=' + encodeURIComponent(t) + '&token=' + k).catch(() => null);
         return r?.ok ? (await r.json()).finnhubIndustry || 'Other' : 'Other';
     },
     async fetchCryptoPrice(id) {
-        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true`).catch(() => null);
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + id + '&vs_currencies=usd&include_24hr_change=true').catch(() => null);
         const d = r?.ok ? await r.json() : null;
         return d?.[id] ? { price: d[id].usd || 0, change: d[id].usd_24h_change || 0 } : { price: 0, change: 0 };
     },
     async fetchEquityPrice(t) {
         const k = PortfolioState.data.finnhubKey;
-        const r = k && await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(t)}&token=${k}`).catch(() => null);
+        const r = k && await fetch('https://finnhub.io/api/v1/quote?symbol=' + encodeURIComponent(t) + '&token=' + k).catch(() => null);
         const d = r?.ok ? await r.json() : null;
         return d ? { price: d.c || 0, change: d.dp || 0 } : { price: 0, change: 0 };
     }
@@ -79,12 +79,12 @@ const TimelineEngine = {
         try {
             let evts = [];
             await Promise.all(tks.flatMap(tk => [
-                fetch(`https://finnhub.io/api/v1/calendar/dividend?from=${start}&to=${end}&symbol=${tk}&token=${k}`).then(r => r.json()).then(d => d.dividendCalendar?.forEach(e => evts.push({ type: 'Dividend', date: new Date(e.date), label: `$${e.symbol} Dividend Payout: $${e.amount.toFixed(3)} per share on ${e.date}` }))),
-                fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${start}&to=${end}&symbol=${tk}&token=${k}`).then(r => r.json()).then(d => d.earningsCalendar?.forEach(e => evts.push({ type: 'Earnings', date: new Date(e.date), label: `$${e.symbol} Earnings Release scheduled Date: ${e.date} (Quarter: ${e.quarter || 'N/A'})` })))
+                fetch('https://finnhub.io/api/v1/calendar/dividend?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.dividendCalendar?.forEach(e => evts.push({ type: 'Dividend', date: new Date(e.date), label: '$' + e.symbol + ' Dividend Payout: $' + e.amount.toFixed(3) + ' per share on ' + e.date }))),
+                fetch('https://finnhub.io/api/v1/calendar/earnings?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.earningsCalendar?.forEach(e => evts.push({ type: 'Earnings', date: new Date(e.date), label: '$' + e.symbol + ' Earnings Release scheduled Date: ' + e.date + ' (Quarter: ' + (e.quarter || 'N/A') + ')' })))
             ].map(p => p.catch(() => null))));
             evts.sort((a, b) => a.date - b.date);
             if (!evts.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No macro corporate events schedule within 90 days.</div>';
-            box.innerHTML = evts.map(e => `<div class="timeline-event-row" style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #1c1a26; font-size:13px;"><span style="color:${e.type === 'Dividend' ? '#4caf50' : '#2196f3'}">${e.label}</span><span style="font-size:10px; font-weight:700; background:#222030; color:#a5a1b8; padding:3px 6px; border-radius:4px; text-transform:uppercase;">${e.type.toUpperCase()}</span></div>`).join('');
+            box.innerHTML = evts.map(e => '<div class="timeline-event-row" style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #1c1a26; font-size:13px;"><span style="color:' + (e.type === 'Dividend' ? '#4caf50' : '#2196f3') + '">' + e.label + '</span><span style="font-size:10px; font-weight:700; background:#222030; color:#a5a1b8; padding:3px 6px; border-radius:4px; text-transform:uppercase;">' + e.type.toUpperCase() + '</span></div>').join('');
         } catch { box.innerHTML = '<div style="color:#f44336; font-size:12px;">Failed parsing event sequence metrics stream.</div>'; }
     }
 };
@@ -92,12 +92,12 @@ const TimelineEngine = {
 const AppEngine = {
     init() { this.injectLayoutExtensions(); this.loadLocalStorage(); this.bindUserInteractions(); this.recalculateAndRenderAll(); },
     injectLayoutExtensions() {
-        $$('.settings-panel')?.insertAdjacentHTML('beforeend', `<div class="settings-panel-header" style="margin-top: 16px;"><span>Private Zero-Knowledge Sync</span></div><div class="settings-row col"><label class="settings-label">Sync Passphrase</label><input id="syncPassphrase" class="settings-input" type="password" placeholder="Passphrase for AES key transformation"></div><div class="settings-row col"><label class="settings-label">Custom Backup Server (Optional)</label><input id="syncEndpoint" class="settings-input" type="text" placeholder="https://api.yourcloud.com/sync"><span class="settings-hint" id="syncStatusHint">Blank defaults encrypted storage block internally.</span></div><div class="settings-row" style="gap: 8px;"><button class="btn-small" id="syncPushBtn" style="flex:1;">↑ Cloud Push</button><button class="btn-small" id="syncPullBtn" style="flex:1;">↓ Cloud Pull</button></div>`);
-        $$('.ticker-wrap')?.insertAdjacentHTML('beforebegin', `<div class="asset-type-segment" style="display:flex; gap:10px; margin-bottom:12px;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="equity" checked style="accent-color:#5c548a;"> Equity / ETF</label><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="crypto" style="accent-color:#5c548a;"> Cryptocurrency</label></div>`);
-        $$('.chart-panel-header')?.insertAdjacentHTML('afterbegin', `<div class="chart-toggle-controls" style="display:flex; gap:8px;"><button class="btn-small active" id="viewPerformanceBtn" style="background:#5c548a; color:#fff;">Performance Trend</button><button class="btn-small" id="viewSectorBtn">Sector Exposure</button></div>`);
-        $('chartCanvasWrap')?.insertAdjacentHTML('beforeend', `<canvas id="sectorChart" style="display:none;"></canvas>`);
-        $('chartCanvasWrap')?.parentNode?.insertAdjacentHTML('beforeend', `<div id="targetAllocationDashboard" style="display:none; background:#1c1a26; border:1px solid #2e2a42; border-radius:10px; padding:14px; margin-top:16px; max-height:200px; overflow-y:auto;"></div>`);
-        $$('.main-layout')?.parentNode?.insertAdjacentHTML('beforeend', `<div class="timeline-panel" style="background:#13121a; border:1px solid #222030; border-radius:14px; padding:20px; margin-top:20px; box-shadow:0 8px 32px rgba(0,0,0,0.4);"><div style="display:flex; justify-content:beteen; align-items:center; margin-bottom:14px; border-bottom:1px solid #222030; padding-bottom:8px;"><h3 style="margin:0; font-size:16px; color:#fff; font-weight:600;">Passive Income & Macro Timeline Feed</h3></div><div id="timelineEventsFeed" style="display:flex; flex-direction:column; gap:4px;"></div></div>`);
+        $$('.settings-panel')?.insertAdjacentHTML('beforeend', '<div class="settings-panel-header" style="margin-top: 16px;"><span>Private Zero-Knowledge Sync</span></div><div class="settings-row col"><label class="settings-label">Sync Passphrase</label><input id="syncPassphrase" class="settings-input" type="password" placeholder="Passphrase for AES key transformation"></div><div class="settings-row col"><label class="settings-label">Custom Backup Server (Optional)</label><input id="syncEndpoint" class="settings-input" type="text" placeholder="https://api.yourcloud.com/sync"><span class="settings-hint" id="syncStatusHint">Blank defaults encrypted storage block internally.</span></div><div class="settings-row" style="gap: 8px;"><button class="btn-small" id="syncPushBtn" style="flex:1;">↑ Cloud Push</button><button class="btn-small" id="syncPullBtn" style="flex:1;">↓ Cloud Pull</button></div>');
+        $$('.ticker-wrap')?.insertAdjacentHTML('beforebegin', '<div class="asset-type-segment" style="display:flex; gap:10px; margin-bottom:12px;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="equity" checked style="accent-color:#5c548a;"> Equity / ETF</label><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="crypto" style="accent-color:#5c548a;"> Cryptocurrency</label></div>');
+        $$('.chart-panel-header')?.insertAdjacentHTML('afterbegin', '<div class="chart-toggle-controls" style="display:flex; gap:8px;"><button class="btn-small active" id="viewPerformanceBtn" style="background:#5c548a; color:#fff;">Performance Trend</button><button class="btn-small" id="viewSectorBtn">Sector Exposure</button></div>');
+        $('chartCanvasWrap')?.insertAdjacentHTML('beforeend', '<canvas id="sectorChart" style="display:none;"></canvas>');
+        $('chartCanvasWrap')?.parentNode?.insertAdjacentHTML('beforeend', '<div id="targetAllocationDashboard" style="display:none; background:#1c1a26; border:1px solid #2e2a42; border-radius:10px; padding:14px; margin-top:16px; max-height:200px; overflow-y:auto;"></div>');
+        $$('.main-layout')?.parentNode?.insertAdjacentHTML('beforeend', '<div class="timeline-panel" style="background:#13121a; border:1px solid #222030; border-radius:14px; padding:20px; margin-top:20px; box-shadow:0 8px 32px rgba(0,0,0,0.4);"><div style="display:flex; justify-content:beteen; align-items:center; margin-bottom:14px; border-bottom:1px solid #222030; padding-bottom:8px;"><h3 style="margin:0; font-size:16px; color:#fff; font-weight:600;">Passive Income & Macro Timeline Feed</h3></div><div id="timelineEventsFeed" style="display:flex; flex-direction:column; gap:4px;"></div></div>');
     },
     loadLocalStorage() { try { const p = localStorage.getItem('portfolio_core_state'); if (p) { PortfolioState.data = JSON.parse(p); $('finnhubKey').value = PortfolioState.data.finnhubKey || ''; } } catch {} },
     saveLocalStorage() { localStorage.setItem('portfolio_core_state', JSON.stringify(PortfolioState.data)); },
@@ -141,10 +141,10 @@ const AppEngine = {
             }
         }
         viewSet('acctCount', PortfolioState.data.accounts.length); viewSet('posCount', count);
-        viewSet('totalVal', `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        viewSet('totalVal', '$' + total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
         const pct = total > 0 ? (weighted / total) * 100 : 0, dg = $('dayGain');
-        if (dg) { dg.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`; dg.style.color = pct >= 0 ? '#4caf50' : '#f44336'; }
-        viewSet('lastUpdated', `Last verification checking loop sequence: ${new Date().toLocaleTimeString()}`);
+        if (dg) { dg.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'; dg.style.color = pct >= 0 ? '#4caf50' : '#f44336'; }
+        viewSet('lastUpdated', 'Last verification checking loop sequence: ' + new Date().toLocaleTimeString());
         this.renderAccountsStructure(); if (PortfolioState.activeView === 'sector') this.renderSectorChart();
         TimelineEngine.updateTimelineFeed();
     },
@@ -153,12 +153,12 @@ const AppEngine = {
         PortfolioState.data.accounts.forEach(acc => {
             const val = acc.holdings.reduce((sum, h) => sum + (h.shares * (h.actualPrice || 0)), 0);
             const card = document.createElement('div'); card.className = 'account-card-container'; card.style.cssText = 'background:#13121a; border:1px solid #222030; border-radius:12px; padding:16px; margin-bottom:14px;';
-            card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><h4 style="margin:0; font-size:15px; color:#fff; font-weight:600;">${acc.name}</h4><span style="font-weight:700; color:#e2e1e6;">$${val.toFixed(2)}</span></div><div class="holdings-list" style="display:flex; flex-direction:column; gap:8px;"></div><button class="btn-small" style="width:100%; margin-top:10px; justify-content:center; background:#1c1a26; border-style:dashed;">+ Add Position Allocation</button>`;
+            card.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><h4 style="margin:0; font-size:15px; color:#fff; font-weight:600;">' + acc.name + '</h4><span style="font-weight:700; color:#e2e1e6;">$' + val.toFixed(2) + '</span></div><div class="holdings-list" style="display:flex; flex-direction:column; gap:8px;"></div><button class="btn-small" style="width:100%; margin-top:10px; justify-content:center; background:#1c1a26; border-style:dashed;">+ Add Position Allocation</button>';
             const hl = card.querySelector('.holdings-list');
             acc.holdings.forEach(h => {
                 const pVal = h.shares * (h.actualPrice || 0), ret = h.cost > 0 ? ((h.actualPrice - h.cost) / h.cost) * 100 : 0;
                 const row = document.createElement('div'); row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#1c1a26; padding:8px 12px; border-radius:8px; font-size:13px; cursor:pointer;';
-                row.innerHTML = `<div style="display:flex; flex-direction:column;"><span style="font-weight:600; color:#fff;">${h.ticker} <span style="font-size:10px; color:#76718a; text-transform:uppercase;">(${h.sector})</span></span><span style="font-size:11px; color:#76718a;">${h.shares} shares @ $${(h.actualPrice || 0).toFixed(2)}</span></div><div style="display:flex; flex-direction:column; align-items:flex-end;"><span style="font-weight:600;">$${pVal.toFixed(2)}</span><span style="font-size:11px; color:${ret >= 0 ? '#4caf50' : '#f44336'};">${ret >= 0 ? '+' : ''}${ret.toFixed(2)}% Return</span></div>`;
+                row.innerHTML = '<div style="display:flex; flex-direction:column;"><span style="font-weight:600; color:#fff;">' + h.ticker + ' <span style="font-size:10px; color:#76718a; text-transform:uppercase;">(' + h.sector + ')</span></span><span style="font-size:11px; color:#76718a;">' + h.shares + ' shares @ $' + (h.actualPrice || 0).toFixed(2) + '</span></div><div style="display:flex; flex-direction:column; align-items:flex-end;"><span style="font-weight:600;">$' + pVal.toFixed(2) + '</span><span style="font-size:11px; color:' + (ret >= 0 ? '#4caf50' : '#f44336') + ';">' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '% Return</span></div>';
                 row.addEventListener('click', () => {
                     PortfolioState.activeAccountId = acc.id; PortfolioState.activeHoldingId = h.id;
                     viewSet('mTitle', 'Edit Holding'); $('mTicker').value = h.ticker; $('mShares').value = h.shares; $('mDate').value = h.date; $('mCost').value = h.cost;
@@ -181,7 +181,7 @@ const AppEngine = {
             secs.forEach(s => {
                 const act = grand > 0 ? (agg[s] / grand) * 100 : 0, tg = PortfolioState.data.targets[s] || 0;
                 const row = document.createElement('div'); row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px;';
-                row.innerHTML = `<span style="color:#fff; font-weight:500;">${s}</span><div style="display:flex; align-items:center; gap:8px;"><span style="color:#76718a;">Actual: ${act.toFixed(1)}%</span><span style="color:#a5a1b8;">Target %:</span><input type="number" value="${tg}" style="width:50px; background:#13121a; border:1px solid #2e2a42; color:#fff; text-align:center; border-radius:4px; padding:2px;"></div>`;
+                row.innerHTML = '<span style="color:#fff; font-weight:500;">' + s + '</span><div style="display:flex; align-items:center; gap:8px;"><span style="color:#76718a;">Actual: ' + act.toFixed(1) + '%</span><span style="color:#a5a1b8;">Target %:</span><input type="number" value="' + tg + '" style="width:50px; background:#13121a; border:1px solid #2e2a42; color:#fff; text-align:center; border-radius:4px; padding:2px;"></div>';
                 row.querySelector('input').addEventListener('change', (e) => { PortfolioState.data.targets[s] = parseFloat(e.target.value) || 0; this.saveLocalStorage(); });
                 db.appendChild(row);
             });
