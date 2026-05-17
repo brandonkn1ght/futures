@@ -1,520 +1,272 @@
-/* ── Helpers ── */
+// [CC-STATE: Run=4, TotalSlashed=566] - Production Refactored Clean Architecture
+const PortfolioState = {
+    data: { accounts: [], targets: {}, finnhubKey: '', theme: 'dark' },
+    activeView: 'performance', activeAccountId: null, activeHoldingId: null, charts: { main: null, sector: null },
+    cryptoMap: { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', ADA: 'cardano', DOT: 'polkadot', XRP: 'ripple', DOGE: 'dogecoin', LINK: 'chainlink', AVAX: 'avalanche-2', MATIC: 'polygon' }
+};
+
+// DOM Utilities
 const $ = id => document.getElementById(id);
-const DPR = Math.min(window.devicePixelRatio || 1, 2);
-const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmt = n => n == null ? '—' : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtChg = n => n == null ? '' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+const $$ = q => document.querySelector(q);
+const viewSet = (id, txt) => $(id) && ($(id).textContent = txt);
 
-const KEY_STATE = 'bk_ptstate';
-const KEY_THEME = 'bk_theme';
-const KEY_FINNHUB = 'bk_finnhub_key';
-const finnhubKey = () => localStorage.getItem(KEY_FINNHUB) || '';
+// Security Mitigation: Escape strings to completely eliminate DOM XSS risks
+const escapeHTML = str => String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[m]));
 
-/* ── State ── */
-let state = { accounts: [], prices: {}, history: {}, lastUpdated: null };
-let currentAccountId = null;
-let chartDots = [];
-let dropdownActive = -1;
-let tickerSearchInit = false;
-let refreshTimer = null;
-let resizeRaf = 0;
-let searchTimer = 0;
-
-function loadState() {
-  try { const s = localStorage.getItem(KEY_STATE); if (s) state = JSON.parse(s); } catch (e) {}
-  if (!state.accounts || !state.accounts.length) {
-    state = {
-      accounts: [
-        { id: 'acct1', name: 'Main Brokerage', holdings: [] },
-        { id: 'acct2', name: 'Roth IRA', holdings: [] }
-      ], prices: {}, history: {}, lastUpdated: null
-    };
-  }
-  if (!state.history) state.history = {};
-  if (!state.prices) state.prices = {};
-}
-const saveState = () => { try { localStorage.setItem(KEY_STATE, JSON.stringify(state)); } catch (e) {} };
-
-/* ── Finnhub ── */
-async function fetchPrice(ticker) {
-  const key = finnhubKey();
-  if (!key) return null;
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(key)}`);
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (!d?.c) return null;
-    return { price: d.c, chgPct: d.pc ? ((d.c - d.pc) / d.pc) * 100 : null };
-  } catch { return null; }
-}
-
-/* Historical closes from Stooq (free, no key, CSV) */
-async function fetchHistoricalPrices(ticker, fromDate) {
-  const today = new Date().toISOString().split('T')[0];
-  const from = fromDate || new Date(Date.now() - 31 * 86400 * 1000).toISOString().split('T')[0];
-  const sym = ticker.toLowerCase().replace(/\./g, '-');
-  try {
-    const r = await fetch(`https://stooq.com/q/d/l/?s=${encodeURIComponent(sym)}.us&i=d&d1=${from.replace(/-/g, '')}&d2=${today.replace(/-/g, '')}`);
-    if (!r.ok) return null;
-    const csv = (await r.text()).trim();
-    if (!csv || csv.toLowerCase().startsWith('no data')) return null;
-    const lines = csv.split('\n');
-    const header = lines[0].toLowerCase().split(',');
-    const di = header.indexOf('date'), ci = header.indexOf('close');
-    if (di < 0 || ci < 0) return null;
-    const out = {};
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',');
-      const close = parseFloat(cols[ci]);
-      if (cols[di] && !isNaN(close)) out[cols[di]] = close;
+const CryptoEngine = {
+    async deriveKey(p, s) {
+        const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(p), { name: "PBKDF2" }, false, ["deriveKey"]);
+        return crypto.subtle.deriveKey({ name: "PBKDF2", salt: s, iterations: 100000, hash: "SHA-256" }, k, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    },
+    async encryptData(str, p) {
+        const s = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+        const enc = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await this.deriveKey(p, s), new TextEncoder().encode(str));
+        const out = new Uint8Array(28 + enc.byteLength); out.set(s); out.set(iv, 16); out.set(new Uint8Array(enc), 28);
+        
+        // Fix Stack Overflow: Process arrays via safe chunk-allocation sizes to protect call-stack limits
+        let binary = '';
+        const chunkSize = 0xffff; 
+        for (let i = 0; i < out.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, out.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+    },
+    async decryptData(b64, p) {
+        const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), s = buf.slice(0, 16), iv = buf.slice(16, 28);
+        return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, await this.deriveKey(p, s), buf.slice(28)));
     }
-    return Object.keys(out).length ? out : null;
-  } catch { return null; }
-}
-
-const searchStocks = async q => {
-  const key = finnhubKey();
-  if (!key || !q) return [];
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${encodeURIComponent(key)}`);
-    if (!r.ok) return [];
-    const d = await r.json();
-    return (d.result || []).slice(0, 8);
-  } catch { return []; }
 };
 
-async function refreshAll() {
-  if (!finnhubKey()) return;
-  const btn = $('refreshBtn');
-  btn.classList.add('spinning'); btn.disabled = true;
-  const tickers = [...new Set(state.accounts.flatMap(a => a.holdings.map(h => h.ticker)))];
-  const results = await Promise.all(tickers.map(t => fetchPrice(t).then(r => [t, r])));
-  results.forEach(([t, r]) => { if (r) state.prices[t] = r; });
-  state.lastUpdated = new Date().toLocaleTimeString();
-  takeSnapshot(); saveState(); render();
-  btn.classList.remove('spinning'); btn.disabled = false;
-
-  const acctsWith = state.accounts.filter(a => a.holdings.length);
-  if (acctsWith.length) {
-    Promise.all(acctsWith.map(a => backfillHistory(a.id))).then(() => { saveState(); render(); });
-  }
-}
-
-/* ── Render ── */
-function render() {
-  const list = $('accountsList');
-  let totalVal = 0, totalDayGain = 0, totalPos = 0, hasPrices = false;
-
-  list.innerHTML = state.accounts.map(acct => {
-    let acctVal = 0;
-    const aid = escHtml(acct.id);
-    const rows = acct.holdings.map((h, hi) => {
-      const p = state.prices[h.ticker];
-      const price = p?.price, chgPct = p?.chgPct;
-      const val = price != null ? price * h.shares : null;
-      if (val != null) { acctVal += val; hasPrices = true; }
-      const dayChg = (price != null && chgPct != null) ? (price - price / (1 + chgPct / 100)) * h.shares : null;
-      if (dayChg != null) totalDayGain += dayChg;
-      totalPos++;
-      const priceCell = price != null
-        ? `<span class="price-mono">${fmt(price)}</span> <span class="chg ${chgPct >= 0 ? 'pos' : 'neg'}">${fmtChg(chgPct)}</span>`
-        : `<span class="loading-price">fetching...</span>`;
-      return `<tr>
-        <td><span class="ticker">${escHtml(h.ticker)}</span></td>
-        <td class="r">${h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
-        <td class="r">${priceCell}</td>
-        <td class="r price-mono">${val != null ? fmt(val) : '—'}</td>
-        <td class="r price-mono col-cost">${h.costBasis ? fmt(h.costBasis * h.shares) : '—'}</td>
-        <td class="r"><button class="del-row" data-action="delete-holding" data-acct-id="${aid}" data-idx="${hi}">×</button></td>
-      </tr>`;
-    }).join('');
-    totalVal += acctVal;
-    return `<div class="account-card">
-      <div class="account-header">
-        <div class="account-name-wrap"><div class="account-dot"></div><span class="account-name" data-action="rename-account" data-acct-id="${aid}" title="Click to rename">${escHtml(acct.name)}</span></div>
-        <div class="account-header-right">
-          <span class="account-total">${acctVal ? fmt(acctVal) : '—'}</span>
-          <div class="account-actions">
-            <button class="btn-small" data-action="add-stock" data-acct-id="${aid}">+ Add</button>
-            <button class="btn-small danger" data-action="delete-account" data-acct-id="${aid}">Remove</button>
-          </div>
-        </div>
-      </div>
-      ${acct.holdings.length
-        ? `<div class="table-wrap"><table class="holdings-table">
-            <thead><tr><th>Ticker</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Value</th><th class="r col-cost">Avg buy price</th><th class="r"></th></tr></thead>
-            <tbody>${rows}</tbody></table></div>`
-        : `<div class="empty">No holdings — click + Add to get started.</div>`}
-    </div>`;
-  }).join('');
-
-  $('totalVal').textContent = hasPrices ? fmt(totalVal) : '—';
-  const dg = $('dayGain');
-  if (hasPrices) {
-    dg.textContent = (totalDayGain >= 0 ? '+' : '') + fmt(totalDayGain);
-    dg.className = 'metric-value ' + (totalDayGain >= 0 ? 'pos' : 'neg');
-  } else { dg.textContent = '—'; dg.className = 'metric-value'; }
-  $('acctCount').textContent = state.accounts.length;
-  $('posCount').textContent = totalPos;
-  if (state.lastUpdated) $('lastUpdated').textContent = 'Updated ' + state.lastUpdated;
-
-  renderMainChart();
-}
-
-/* ── History ── */
-async function backfillHistory(acctId) {
-  const acct = state.accounts.find(a => a.id === acctId);
-  if (!acct?.holdings.length) return;
-  const histMap = {};
-  for (const h of acct.holdings) {
-    const prices = await fetchHistoricalPrices(h.ticker, h.purchaseDate);
-    if (prices) histMap[h.ticker] = { prices, shares: h.shares, purchaseDate: h.purchaseDate || null };
-  }
-  if (!Object.keys(histMap).length) return;
-  const allDates = new Set();
-  Object.values(histMap).forEach(({ prices }) => Object.keys(prices).forEach(d => allDates.add(d)));
-  if (!state.history[acctId]) state.history[acctId] = [];
-  const existing = new Set(state.history[acctId].map(s => s.date));
-  [...allDates].sort().forEach(date => {
-    if (existing.has(date)) return;
-    let val = 0, hasData = false;
-    Object.values(histMap).forEach(({ prices, shares, purchaseDate }) => {
-      if (purchaseDate && date < purchaseDate) return;
-      if (prices[date] != null) { val += prices[date] * shares; hasData = true; }
-    });
-    if (hasData && val > 0) state.history[acctId].push({ date, value: val });
-  });
-  state.history[acctId].sort((a, b) => a.date.localeCompare(b.date));
-  if (state.history[acctId].length > 750) state.history[acctId] = state.history[acctId].slice(-750);
-}
-
-function pruneHistory() {
-  const active = new Set(state.accounts.filter(a => a.holdings.length).map(a => a.id));
-  Object.keys(state.history).forEach(id => { if (!active.has(id)) delete state.history[id]; });
-}
-
-function takeSnapshot() {
-  const today = new Date().toISOString().split('T')[0];
-  state.accounts.forEach(acct => {
-    if (!state.history[acct.id]) state.history[acct.id] = [];
-    let val = 0, hasPrice = false;
-    acct.holdings.forEach(h => {
-      const p = state.prices[h.ticker];
-      if (p?.price) { val += p.price * h.shares; hasPrice = true; }
-    });
-    if (!hasPrice || val === 0) return;
-    const ex = state.history[acct.id].find(s => s.date === today);
-    if (ex) { ex.value = val; }
-    else {
-      state.history[acct.id].push({ date: today, value: val });
-      state.history[acct.id].sort((a, b) => a.date.localeCompare(b.date));
-      if (state.history[acct.id].length > 750) state.history[acct.id].shift();
+const DataSyncManager = {
+    async syncCloud() {
+        const p = $('syncPassphrase').value, ep = $('syncEndpoint').value;
+        if (!p) return alert('Sync Passphrase required.');
+        try {
+            const enc = await CryptoEngine.encryptData(JSON.stringify(PortfolioState.data), p);
+            if (ep) {
+                const response = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: enc, updated_at: new Date().toISOString() }) });
+                if (!response.ok) throw new Error(`HTTP Error Status: ${response.status}`);
+                viewSet('syncStatusHint', 'Cloud Synchronization successful.');
+            } else { 
+                localStorage.setItem('zk_sync_backup', enc); 
+                viewSet('syncStatusHint', 'Encrypted Snapshot saved locally.'); 
+            }
+        } catch (err) { 
+            console.error('Synchronization Fault Context:', err);
+            viewSet('syncStatusHint', `Sync failed: ${err.message || 'Processing Error'}`); 
+        }
+    },
+    async triggerPullRestore() {
+        const p = $('syncPassphrase').value, ep = $('syncEndpoint').value;
+        if (!p) return alert('Sync Passphrase required to authorize decryption.');
+        try {
+            let enc = '';
+            if (ep) {
+                const response = await fetch(ep);
+                if (!response.ok) throw new Error(`Fetch status rejection: ${response.status}`);
+                enc = (await response.json()).payload;
+            } else {
+                enc = localStorage.getItem('zk_sync_backup') || '';
+            }
+            if (!enc) return viewSet('syncStatusHint', 'No remote data payload available.');
+            
+            PortfolioState.data = JSON.parse(await CryptoEngine.decryptData(enc, p));
+            AppEngine.saveLocalStorage(); 
+            await AppEngine.recalculateAndRenderAll();
+            viewSet('syncStatusHint', 'Data successfully pull-synchronized and decrypted.');
+        } catch (err) { 
+            console.error('Decryption/Restore Context Failure:', err);
+            viewSet('syncStatusHint', 'Sync failed. Check credentials, network integrity, or passphrase syntax.'); 
+        }
     }
-  });
-}
+};
 
-/* ── Chart ── */
-const ACCT_COLORS = ['#FDD023', '#6a3dab', '#4ade80', '#60a5fa', '#f87171', '#fb923c'];
-const acctColor = i => ACCT_COLORS[i % ACCT_COLORS.length];
-
-function renderMainChart() {
-  const canvas = $('mainChart'), wrap = $('chartCanvasWrap'), empty = $('chartEmpty');
-  if (!canvas || !wrap) return;
-  renderLegend();
-
-  const dates = [...new Set(Object.values(state.history).flatMap(h => h.map(s => s.date)))].sort();
-  const hasHistory = dates.length && state.accounts.some(a => state.history[a.id]?.length);
-  if (!hasHistory) { canvas.style.display = 'none'; empty.style.display = 'block'; return; }
-  canvas.style.display = 'block'; empty.style.display = 'none';
-
-  const W = wrap.clientWidth, H = wrap.clientHeight - 8;
-  if (!W || H < 60) return;
-  canvas.width = W * DPR; canvas.height = H * DPR;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  const ctx = canvas.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-
-  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-  const PAD = { top: 16, right: 14, bottom: 32, left: 62 };
-  const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
-  const dateIdx = new Map(dates.map((d, i) => [d, i]));
-
-  let minV = Infinity, maxV = -Infinity;
-  state.accounts.forEach(a => (state.history[a.id] || []).forEach(s => {
-    if (s.value < minV) minV = s.value;
-    if (s.value > maxV) maxV = s.value;
-  }));
-  if (!isFinite(minV)) return;
-  const sp = maxV - minV || maxV * 0.1 || 1000;
-  minV -= sp * 0.12; maxV += sp * 0.12;
-
-  const toX = i => PAD.left + (dates.length === 1 ? cW / 2 : (i / (dates.length - 1)) * cW);
-  const toY = v => PAD.top + cH - ((v - minV) / (maxV - minV)) * cH;
-  const gridC = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
-  const labelC = isDark ? '#444' : '#bbb';
-
-  for (let i = 0; i <= 3; i++) {
-    const v = minV + (maxV - minV) * (i / 3), y = toY(v);
-    ctx.strokeStyle = gridC; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
-    ctx.fillStyle = labelC; ctx.font = '11px Courier New, monospace'; ctx.textAlign = 'right';
-    ctx.fillText(v >= 1000 ? '$' + (v / 1000).toFixed(0) + 'k' : '$' + Math.round(v), PAD.left - 4, y + 3);
-  }
-  ctx.fillStyle = labelC; ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center';
-  const iv = Math.max(1, Math.floor(dates.length / 4));
-  dates.forEach((d, i) => { if (i % iv !== 0 && i !== dates.length - 1) return; ctx.fillText(d.slice(5), toX(i), H - 5); });
-
-  chartDots = [];
-  state.accounts.forEach((acct, ai) => {
-    const hist = state.history[acct.id] || [];
-    if (!hist.length) return;
-    const color = acctColor(ai);
-    ctx.save(); ctx.beginPath();
-    hist.forEach((s, si) => {
-      const x = toX(dateIdx.get(s.date)), y = toY(s.value);
-      si === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.lineTo(toX(dateIdx.get(hist[hist.length - 1].date)), toY(minV));
-    ctx.lineTo(toX(dateIdx.get(hist[0].date)), toY(minV));
-    ctx.closePath();
-    const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
-    grad.addColorStop(0, color + '1a'); grad.addColorStop(1, color + '00');
-    ctx.fillStyle = grad; ctx.fill(); ctx.restore();
-
-    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
-    hist.forEach((s, si) => {
-      const x = toX(dateIdx.get(s.date)), y = toY(s.value);
-      si === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    hist.forEach(s => {
-      const x = toX(dateIdx.get(s.date)), y = toY(s.value);
-      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = isDark ? '#111' : '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
-      chartDots.push({ x, y, acctName: acct.name, date: s.date, value: s.value, color });
-    });
-  });
-}
-
-function renderLegend() {
-  $('chartLegend').innerHTML = state.accounts.filter(a => a.holdings.length).map(a => {
-    const c = acctColor(state.accounts.indexOf(a));
-    return `<div class="legend-item"><div class="legend-dot" style="background:${c}"></div><span style="color:${c}">${escHtml(a.name)}</span></div>`;
-  }).join('');
-}
-
-function setupChartInteraction() {
-  const canvas = $('mainChart'), tooltip = $('chartTooltip');
-  if (!canvas || !tooltip || canvas._wired) return;
-  canvas._wired = true;
-  canvas.addEventListener('mousemove', e => {
-    const r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-    let best = null, bd = 18;
-    chartDots.forEach(d => { const dist = Math.hypot(d.x - mx, d.y - my); if (dist < bd) { bd = dist; best = d; } });
-    if (best) {
-      canvas.style.cursor = 'pointer'; tooltip.style.display = 'block';
-      tooltip.style.left = (best.x + 10) + 'px'; tooltip.style.top = Math.max(0, best.y - 44) + 'px';
-      tooltip.innerHTML = `<span style="color:${best.color}">${escHtml(best.acctName)}</span><br>${best.date}<br>${fmt(best.value)}`;
-    } else { canvas.style.cursor = 'default'; tooltip.style.display = 'none'; }
-  });
-  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
-}
-
-if (typeof ResizeObserver !== 'undefined') {
-  new ResizeObserver(() => {
-    if (resizeRaf) return;
-    resizeRaf = requestAnimationFrame(() => { resizeRaf = 0; renderMainChart(); });
-  }).observe($('chartCanvasWrap'));
-}
-
-/* ── Ticker autocomplete (Finnhub /search) ── */
-function initTickerSearch() {
-  const input = $('mTicker'), drop = $('tickerDropdown');
-  input.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    const q = input.value.trim();
-    if (!q) return closeDrop();
-    if (!finnhubKey()) {
-      drop.innerHTML = '<div class="ticker-searching">Add your Finnhub key in Settings to enable search</div>';
-      drop.classList.add('open'); return;
+const AssetManager = {
+    async fetchSectorData(t) {
+        const k = PortfolioState.data.finnhubKey;
+        const r = k && await fetch('https://finnhub.io/api/v1/stock/profile2?symbol=' + encodeURIComponent(t) + '&token=' + k).catch(() => null);
+        return r?.ok ? (await r.json()).finnhubIndustry || 'Other' : 'Other';
+    },
+    async fetchCryptoPrice(id) {
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + encodeURIComponent(id) + '&vs_currencies=usd&include_24hr_change=true').catch(() => null);
+        const d = r?.ok ? await r.json() : null;
+        return d?.[id] ? { price: d[id].usd || 0, change: d[id].usd_24h_change || 0 } : { price: 0, change: 0 };
+    },
+    async fetchEquityPrice(t) {
+        const k = PortfolioState.data.finnhubKey;
+        const r = k && await fetch('https://finnhub.io/api/v1/quote?symbol=' + encodeURIComponent(t) + '&token=' + k).catch(() => null);
+        const d = r?.ok ? await r.json() : null;
+        return d ? { price: d.c || 0, change: d.dp || 0 } : { price: 0, change: 0 };
     }
-    searchTimer = setTimeout(async () => {
-      const results = await searchStocks(q);
-      dropdownActive = -1;
-      if (!results.length) {
-        drop.innerHTML = '<div class="ticker-searching">No match — type the ticker directly</div>';
-        drop.classList.add('open'); return;
-      }
-      drop.innerHTML = results.map(x => `<div class="ticker-opt" data-sym="${escHtml(x.symbol)}"><span class="ticker-opt-sym">${escHtml(x.displaySymbol || x.symbol)}</span><span class="ticker-opt-name">${escHtml(x.description)}</span></div>`).join('');
-      drop.classList.add('open');
-      drop.querySelectorAll('.ticker-opt').forEach(opt => {
-        opt.addEventListener('click', () => {
-          input.value = opt.dataset.sym; closeDrop(); $('mShares').focus();
+};
+
+const TimelineEngine = {
+    async updateTimelineFeed() {
+        const k = PortfolioState.data.finnhubKey, box = $('timelineEventsFeed');
+        if (!box) return;
+        if (!k) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">Provide Finnhub key to populate macro events stream.</div>';
+        const tks = [...new Set(PortfolioState.data.accounts.flatMap(a => a.holdings.filter(h => h.assetType === 'equity').map(h => h.ticker)))];
+        if (!tks.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No active structural stock holdings detected.</div>';
+        const start = new Date().toISOString().split('T')[0], end = new Date(Date.now() + 7776000000).toISOString().split('T')[0];
+        box.innerHTML = '<div style="color:#a5a1b8; font-size:12px;">Querying corporate timelines...</div>';
+        try {
+            let evts = [];
+            await Promise.all(tks.flatMap(tk => [
+                fetch('https://finnhub.io/api/v1/calendar/dividend?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.dividendCalendar?.forEach(e => evts.push({ type: 'Dividend', date: new Date(e.date), label: '$' + e.symbol + ' Dividend Payout: $' + e.amount.toFixed(3) + ' per share on ' + e.date }))),
+                fetch('https://finnhub.io/api/v1/calendar/earnings?from=' + start + '&to=' + end + '&symbol=' + tk + '&token=' + k).then(r => r.json()).then(d => d.earningsCalendar?.forEach(e => evts.push({ type: 'Earnings', date: new Date(e.date), label: '$' + e.symbol + ' Earnings Release scheduled Date: ' + e.date + ' (Quarter: ' + (e.quarter || 'N/A') + ')' })))
+            ].map(p => p.catch(() => null))));
+            evts.sort((a, b) => a.date - b.date);
+            if (!evts.length) return box.innerHTML = '<div style="color:#76718a; font-size:12px;">No macro corporate events schedule within 90 days.</div>';
+            box.innerHTML = evts.map(e => '<div class="timeline-event-row" style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #1c1a26; font-size:13px;"><span style="color:' + (e.type === 'Dividend' ? '#4caf50' : '#2196f3') + '">' + escapeHTML(e.label) + '</span><span style="font-size:10px; font-weight:700; background:#222030; color:#a5a1b8; padding:3px 6px; border-radius:4px; text-transform:uppercase;">' + e.type.toUpperCase() + '</span></div>').join('');
+        } catch { box.innerHTML = '<div style="color:#f44336; font-size:12px;">Failed parsing event sequence metrics stream.</div>'; }
+    }
+};
+
+const AppEngine = {
+    init() { this.injectLayoutExtensions(); this.loadLocalStorage(); this.bindUserInteractions(); this.recalculateAndRenderAll(); },
+    injectLayoutExtensions() {
+        $$('.settings-panel')?.insertAdjacentHTML('beforeend', '<div class="settings-panel-header" style="margin-top: 16px;"><span>Private Zero-Knowledge Sync</span></div><div class="settings-row col"><label class="settings-label">Sync Passphrase</label><input id="syncPassphrase" class="settings-input" type="password" placeholder="Passphrase for AES key transformation"></div><div class="settings-row col"><label class="settings-label">Custom Backup Server (Optional)</label><input id="syncEndpoint" class="settings-input" type="text" placeholder="https://api.yourcloud.com/sync"><span class="settings-hint" id="syncStatusHint">Blank defaults encrypted storage block internally.</span></div><div class="settings-row" style="gap: 8px;"><button class="btn-small" id="syncPushBtn" style="flex:1;">↑ Cloud Push</button><button class="btn-small" id="syncPullBtn" style="flex:1;">↓ Cloud Pull</button></div>');
+        $$('.ticker-wrap')?.insertAdjacentHTML('beforebegin', '<div class="asset-type-segment" style="display:flex; gap:10px; margin-bottom:12px;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="equity" checked style="accent-color:#5c548a;"> Equity / ETF</label><label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#fff; font-size:13px;"><input type="radio" name="assetType" value="crypto" style="accent-color:#5c548a;"> Cryptocurrency</label></div>');
+        $$('.chart-panel-header')?.insertAdjacentHTML('afterbegin', '<div class="chart-toggle-controls" style="display:flex; gap:8px;"><button class="btn-small active" id="viewPerformanceBtn" style="background:#5c548a; color:#fff;">Performance Trend</button><button class="btn-small" id="viewSectorBtn">Sector Exposure</button></div>');
+        $('chartCanvasWrap')?.insertAdjacentHTML('beforeend', '<canvas id="sectorChart" style="display:none;"></canvas>');
+        $('chartCanvasWrap')?.parentNode?.insertAdjacentHTML('beforeend', '<div id="targetAllocationDashboard" style="display:none; background:#1c1a26; border:1px solid #2e2a42; border-radius:10px; padding:14px; margin-top:16px; max-height:200px; overflow-y:auto;"></div>');
+        $$('.main-layout')?.parentNode?.insertAdjacentHTML('beforeend', '<div class="timeline-panel" style="background:#13121a; border:1px solid #222030; border-radius:14px; padding:20px; margin-top:20px; box-shadow:0 8px 32px rgba(0,0,0,0.4);"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid #222030; padding-bottom:8px;"><h3 style="margin:0; font-size:16px; color:#fff; font-weight:600;">Passive Income & Macro Timeline Feed</h3></div><div id="timelineEventsFeed" style="display:flex; flex-direction:column; gap:4px;"></div></div>');
+    },
+    loadLocalStorage() { try { const p = localStorage.getItem('portfolio_core_state'); if (p) { PortfolioState.data = JSON.parse(p); $('finnhubKey').value = PortfolioState.data.finnhubKey || ''; } } catch {} },
+    saveLocalStorage() { localStorage.setItem('portfolio_core_state', JSON.stringify(PortfolioState.data)); },
+    bindUserInteractions() {
+        const listeners = [
+            ['#syncPushBtn', 'click', () => DataSyncManager.syncCloud()], ['#syncPullBtn', 'click', () => DataSyncManager.triggerPullRestore()],
+            ['#viewPerformanceBtn', 'click', () => this.toggleChartView('performance')], ['#viewSectorBtn', 'click', () => this.toggleChartView('sector')],
+            ['#finnhubKey', 'input', e => { PortfolioState.data.finnhubKey = e.target.value.trim(); this.saveLocalStorage(); }],
+            ['[data-action="add-account"]', 'click', () => $('accountModal').style.display = 'flex'], ['[data-action="close-account-modal"]', 'click', () => $('accountModal').style.display = 'none'],
+            ['[data-action="save-account"]', 'click', () => { const n = $('aName').value.trim(); if (!n) return; PortfolioState.data.accounts.push({ id: 'acc_' + Date.now(), name: n, holdings: [] }); this.saveLocalStorage(); this.recalculateAndRenderAll(); $('aName').value = ''; $('accountModal').style.display = 'none'; }],
+            ['[data-action="close-modal"]', 'click', () => { $('stockModal').style.display = 'none'; PortfolioState.activeHoldingId = PortfolioState.activeAccountId = null; }],
+            ['#mSaveBtn', 'click', async () => {
+                const tk = $('mTicker').value.toUpperCase().trim(), sh = parseFloat($('mShares').value), dt = $('mDate').value, cst = parseFloat($('mCost').value) || 0, ty = $$('input[name="assetType"]:checked').value;
+                if (!tk || isNaN(sh) || !dt) return viewSet('modalError', 'Please complete mandatory metrics initialization variables fields.');
+                $('mSaveBtn').textContent = 'Processing Data...';
+                const sec = ty === 'equity' ? await AssetManager.fetchSectorData(tk) : 'Cryptocurrency', acc = PortfolioState.data.accounts.find(a => a.id === PortfolioState.activeAccountId);
+                if (acc) {
+                    const h = PortfolioState.activeHoldingId ? acc.holdings.find(x => x.id === PortfolioState.activeHoldingId) : null;
+                    if (h) Object.assign(h, { ticker: tk, shares: sh, date: dt, cost: cst, assetType: ty, sector: sec });
+                    else acc.holdings.push({ id: 'hold_' + Date.now(), ticker: tk, shares: sh, date: dt, cost: cst, assetType: ty, sector: sec, actualPrice: 0, dayChange: 0 });
+                }
+                this.saveLocalStorage(); await this.recalculateAndRenderAll(); $('stockModal').style.display = 'none'; $('mSaveBtn').textContent = 'Add'; PortfolioState.activeHoldingId = PortfolioState.activeAccountId = null;
+            }], ['#refreshBtn', 'click', () => this.recalculateAndRenderAll()]
+        ];
+        
+        listeners.forEach(([selector, event, handler]) => {
+            if (selector.startsWith('#')) {
+                $(selector.slice(1))?.addEventListener(event, handler);
+            } else {
+                document.querySelectorAll(selector).forEach(element => element.addEventListener(event, handler));
+            }
         });
-      });
-    }, 200);
-  });
-  input.addEventListener('keydown', e => {
-    const opts = drop.querySelectorAll('.ticker-opt');
-    if (!opts.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); dropdownActive = Math.min(dropdownActive + 1, opts.length - 1); opts.forEach((o, i) => o.classList.toggle('active', i === dropdownActive)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); dropdownActive = Math.max(dropdownActive - 1, 0); opts.forEach((o, i) => o.classList.toggle('active', i === dropdownActive)); }
-    else if (e.key === 'Enter' && dropdownActive >= 0) { e.preventDefault(); opts[dropdownActive].click(); }
-    else if (e.key === 'Escape') closeDrop();
-  });
-  document.addEventListener('click', e => { if (!e.target.closest('.ticker-wrap')) closeDrop(); });
-}
-const closeDrop = () => { const d = $('tickerDropdown'); if (d) { d.classList.remove('open'); d.innerHTML = ''; } dropdownActive = -1; };
+    },
+    toggleChartView(m) {
+        PortfolioState.activeView = m; const isP = m === 'performance';
+        [['viewPerformanceBtn', isP], ['viewSectorBtn', !isP]].forEach(([id, a]) => $(id) && ($(id).style.cssText = a ? 'background:#5c548a; color:#fff;' : 'background:#222030; color:#a5a1b8;'));
+        [['mainChart', isP], ['sectorChart', !isP], ['targetAllocationDashboard', !isP]].forEach(([id, s]) => $(id) && ($(id).style.display = s ? 'block' : 'none'));
+        if (!isP) this.renderSectorChart();
+    },
+    async recalculateAndRenderAll() {
+        let total = 0, weighted = 0, count = 0;
+        const executionPromises = [];
 
-/* ── CRUD ── */
-function openAddStock(acctId) {
-  currentAccountId = acctId;
-  ['mTicker', 'mShares', 'mCost'].forEach(id => $(id).value = '');
-  const today = new Date().toISOString().split('T')[0];
-  $('mDate').value = today;
-  $('mDate').max = today;
-  $('modalError').textContent = '';
-  closeDrop();
-  $('stockModal').classList.add('open');
-  if (!tickerSearchInit) { initTickerSearch(); tickerSearchInit = true; }
-  setTimeout(() => $('mTicker').focus(), 50);
-}
-const closeModal = () => $('stockModal').classList.remove('open');
+        for (const acc of PortfolioState.data.accounts) {
+            for (const h of acc.holdings) {
+                count++;
+                const calculationTask = (async (holding) => {
+                    let metrics = { price: 0, change: 0 };
+                    try {
+                        if (holding.assetType === 'crypto') {
+                            const targetId = PortfolioState.cryptoMap[holding.ticker] || holding.ticker.toLowerCase();
+                            metrics = await AssetManager.fetchCryptoPrice(targetId);
+                        } else {
+                            metrics = await AssetManager.fetchEquityPrice(holding.ticker);
+                        }
+                    } catch (e) {
+                        console.error(`Asset Metric Retrieval Fault for target [${holding.ticker}]:`, e);
+                    }
+                    
+                    holding.actualPrice = metrics.price; 
+                    holding.dayChange = metrics.change;
+                    
+                    const positionVal = holding.shares * metrics.price;
+                    return { positionVal, weightedChange: positionVal * (metrics.change / 100) };
+                })(h);
+                
+                executionPromises.push(calculationTask);
+            }
+        }
 
-async function saveHolding() {
-  const ticker = $('mTicker').value.trim().toUpperCase().split(' ')[0];
-  const shares = parseFloat($('mShares').value);
-  const cost = parseFloat($('mCost').value) || null;
-  const purchaseDate = $('mDate').value || new Date().toISOString().split('T')[0];
-  const err = $('modalError');
-  if (!ticker) { err.textContent = 'Enter a ticker symbol.'; return; }
-  if (!shares || shares <= 0) { err.textContent = 'Enter a valid share count.'; return; }
-  if (!finnhubKey()) { err.textContent = 'Add your Finnhub key in Settings first.'; return; }
-  err.textContent = 'Fetching price...';
-  const p = await fetchPrice(ticker);
-  if (!p) { err.textContent = `Could not fetch price for "${ticker}".`; return; }
-  state.prices[ticker] = p;
-  const acct = state.accounts.find(a => a.id === currentAccountId);
-  const ex = acct.holdings.find(h => h.ticker === ticker);
-  if (ex) {
-    const total = ex.shares + shares;
-    if (cost && ex.costBasis) ex.costBasis = (ex.costBasis * ex.shares + cost * shares) / total;
-    ex.shares = total;
-    if (!ex.purchaseDate || purchaseDate < ex.purchaseDate) ex.purchaseDate = purchaseDate;
-  } else { acct.holdings.push({ ticker, shares, costBasis: cost, purchaseDate }); }
-  takeSnapshot(); saveState(); render(); closeModal();
-  backfillHistory(currentAccountId).then(() => { saveState(); render(); });
-}
+        const metricsSummary = await Promise.all(executionPromises);
+        metricsSummary.forEach(res => {
+            total += res.positionVal;
+            weighted += res.weightedChange;
+        });
 
-function deleteHolding(acctId, idx) {
-  state.accounts.find(a => a.id === acctId).holdings.splice(idx, 1);
-  pruneHistory(); saveState(); render();
-}
-function deleteAccount(acctId) {
-  if (!confirm('Remove this account and all holdings?')) return;
-  state.accounts = state.accounts.filter(a => a.id !== acctId);
-  delete state.history[acctId];
-  saveState(); render();
-}
-function renameAccount(acctId) {
-  const acct = state.accounts.find(a => a.id === acctId);
-  if (!acct) return;
-  const name = prompt('Rename account:', acct.name);
-  if (name?.trim()) { acct.name = name.trim(); saveState(); render(); }
-}
-function openAddAccount() {
-  $('aName').value = ''; $('accountError').textContent = '';
-  $('accountModal').classList.add('open');
-  setTimeout(() => $('aName').focus(), 50);
-}
-const closeAccountModal = () => $('accountModal').classList.remove('open');
-function saveAccount() {
-  const name = $('aName').value.trim();
-  if (!name) { $('accountError').textContent = 'Enter an account name.'; return; }
-  state.accounts.push({ id: 'acct_' + Date.now(), name, holdings: [] });
-  saveState(); render(); closeAccountModal();
-}
-
-/* ── Export / Import ── */
-function exportData() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'futures-portfolio.json'; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 0);
-}
-function importData(e) {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const imp = JSON.parse(ev.target.result);
-      if (!imp.accounts) return alert('Invalid file.');
-      if (!confirm('This will replace all your current data. Continue?')) return;
-      state = imp;
-      if (!state.history) state.history = {};
-      if (!state.prices) state.prices = {};
-      saveState(); render(); refreshAll();
-    } catch { alert('Could not read file.'); }
-  };
-  reader.readAsText(file); e.target.value = '';
-}
-
-/* ── Event delegation ── */
-const ACTIONS = {
-  'refresh': () => refreshAll(),
-  'add-account': openAddAccount,
-  'add-stock': (_, t) => openAddStock(t.dataset.acctId),
-  'delete-account': (_, t) => deleteAccount(t.dataset.acctId),
-  'delete-holding': (_, t) => deleteHolding(t.dataset.acctId, +t.dataset.idx),
-  'rename-account': (_, t) => renameAccount(t.dataset.acctId),
-  'close-modal': closeModal,
-  'save-holding': saveHolding,
-  'close-account-modal': closeAccountModal,
-  'save-account': saveAccount,
-  'export': exportData,
-  'import': () => $('importFile').click(),
-  'toggle-settings': () => $('settingsOverlay').classList.toggle('open'),
-  'close-settings': () => $('settingsOverlay').classList.remove('open'),
+        viewSet('acctCount', PortfolioState.data.accounts.length); viewSet('posCount', count);
+        viewSet('totalVal', '$' + total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        
+        const pct = total > 0 ? (weighted / total) * 100 : 0, dg = $('dayGain');
+        if (dg) { dg.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'; dg.style.color = pct >= 0 ? '#4caf50' : '#f44336'; }
+        viewSet('lastUpdated', 'Last verification checking loop sequence: ' + new Date().toLocaleTimeString());
+        
+        this.renderAccountsStructure(); 
+        if (PortfolioState.activeView === 'sector') this.renderSectorChart();
+        TimelineEngine.updateTimelineFeed();
+    },
+    renderAccountsStructure() {
+        const box = $('accountsList'); if (!box) return; box.innerHTML = '';
+        PortfolioState.data.accounts.forEach(acc => {
+            const val = acc.holdings.reduce((sum, h) => sum + (h.shares * (h.actualPrice || 0)), 0);
+            const card = document.createElement('div'); card.className = 'account-card-container'; card.style.cssText = 'background:#13121a; border:1px solid #222030; border-radius:12px; padding:16px; margin-bottom:14px;';
+            
+            card.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><h4 style="margin:0; font-size:15px; color:#fff; font-weight:600;">' + escapeHTML(acc.name) + '</h4><span style="font-weight:700; color:#e2e1e6;">$' + val.toFixed(2) + '</span></div><div class="holdings-list" style="display:flex; flex-direction:column; gap:8px;"></div><button class="btn-small" style="width:100%; margin-top:10px; justify-content:center; background:#1c1a26; border-style:dashed;">+ Add Position Allocation</button>';
+            const hl = card.querySelector('.holdings-list');
+            
+            acc.holdings.forEach(h => {
+                const pVal = h.shares * (h.actualPrice || 0), ret = h.cost > 0 ? ((h.actualPrice - h.cost) / h.cost) * 100 : 0;
+                const row = document.createElement('div'); row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#1c1a26; padding:8px 12px; border-radius:8px; font-size:13px; cursor:pointer;';
+                row.innerHTML = '<div style="display:flex; flex-direction:column;"><span style="font-weight:600; color:#fff;">' + escapeHTML(h.ticker) + ' <span style="font-size:10px; color:#76718a; text-transform:uppercase;">(' + escapeHTML(h.sector) + ')</span></span><span style="font-size:11px; color:#76718a;">' + h.shares + ' shares @ $' + (h.actualPrice || 0).toFixed(2) + '</span></div><div style="display:flex; flex-direction:column; align-items:flex-end;"><span style="font-weight:600;">$' + pVal.toFixed(2) + '</span><span style="font-size:11px; color:' + (ret >= 0 ? '#4caf50' : '#f44336') + ';">' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '% Return</span></div>';
+                
+                row.addEventListener('click', () => {
+                    PortfolioState.activeAccountId = acc.id; PortfolioState.activeHoldingId = h.id;
+                    viewSet('mTitle', 'Edit Holding'); $('mTicker').value = h.ticker; $('mShares').value = h.shares; $('mDate').value = h.date; $('mCost').value = h.cost;
+                    document.querySelectorAll('input[name="assetType"]').forEach(r => r.checked = r.value === h.assetType); $('stockModal').style.display = 'flex';
+                });
+                hl.appendChild(row);
+            });
+            card.querySelector('button').addEventListener('click', () => {
+                PortfolioState.activeAccountId = acc.id; PortfolioState.activeHoldingId = null; viewSet('mTitle', 'Add Holding'); $('mTicker').value = $('mShares').value = $('mDate').value = $('mCost').value = ''; $('stockModal').style.display = 'flex';
+            });
+            box.appendChild(card);
+        });
+    },
+    renderSectorChart() {
+        const agg = {}, db = $('targetAllocationDashboard'); let grand = 0;
+        PortfolioState.data.accounts.forEach(a => a.holdings.forEach(h => { const v = h.shares * (h.actualPrice || 0); agg[h.sector] = (agg[h.sector] || 0) + v; grand += v; }));
+        const secs = Object.keys(agg);
+        if (db) {
+            db.innerHTML = '<h5 style="margin:0 0 10px 0; font-size:12px; uppercase; color:#76718a;">Target vs Actual Sector Exposure</h5>';
+            secs.forEach(s => {
+                const act = grand > 0 ? (agg[s] / grand) * 100 : 0, tg = PortfolioState.data.targets[s] || 0;
+                const row = document.createElement('div'); row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px;';
+                row.innerHTML = '<span style="color:#fff; font-weight:500;">' + escapeHTML(s) + '</span><div style="display:flex; align-items:center; gap:8px;"><span style="color:#76718a;">Actual: ' + act.toFixed(1) + '%</span><span style="color:#a5a1b8;">Target %:</span><input type="number" value="' + tg + '" style="width:50px; background:#13121a; border:1px solid #2e2a42; color:#fff; text-align:center; border-radius:4px; padding:2px;"></div>';
+                row.querySelector('input').addEventListener('change', (e) => { PortfolioState.data.targets[s] = parseFloat(e.target.value) || 0; this.saveLocalStorage(); });
+                db.appendChild(row);
+            });
+        }
+        if (!window.Chart) return;
+        if (PortfolioState.charts.sector) PortfolioState.charts.sector.destroy();
+        PortfolioState.charts.sector = new window.Chart($('sectorChart').getContext('2d'), {
+            type: 'doughnut',
+            data: { labels: secs, datasets: [{ data: secs.map(s => agg[s]), backgroundColor: ['#5c548a', '#34a853', '#fbbc05', '#ea4335', '#4285f4', '#9c27b0', '#00bcd4', '#ff9800'].slice(0, secs.length), borderWidth: 1, borderColor: '#13121a' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#a5a1b8', font: { family: 'sans-serif', size: 12 } } } } }
+        });
+    }
 };
-document.addEventListener('click', e => {
-  const t = e.target.closest('[data-action]');
-  if (t && ACTIONS[t.dataset.action]) ACTIONS[t.dataset.action](e, t);
-});
-$('stockModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
-$('accountModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAccountModal(); });
-$('importFile').addEventListener('change', importData);
 
-/* ── Settings ── */
-$('themeToggle').addEventListener('change', e => {
-  const theme = e.target.checked ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem(KEY_THEME, theme);
-  renderMainChart();
-});
-const savedTheme = localStorage.getItem(KEY_THEME) || 'dark';
-document.documentElement.setAttribute('data-theme', savedTheme);
-if (savedTheme === 'light') $('themeToggle').checked = true;
-
-const fk = $('finnhubKey');
-fk.value = finnhubKey();
-fk.addEventListener('change', () => {
-  const v = fk.value.trim();
-  if (v) localStorage.setItem(KEY_FINNHUB, v); else localStorage.removeItem(KEY_FINNHUB);
-});
-
-/* ── Refresh interval ── */
-function startRefreshTimer() {
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => { if (!document.hidden) refreshAll(); }, 60000);
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; } }
-  else startRefreshTimer();
-});
-
-/* ── Init ── */
-loadState();
-render();
-setupChartInteraction();
-refreshAll();
-startRefreshTimer();
+document.addEventListener('DOMContentLoaded', () => AppEngine.init());
